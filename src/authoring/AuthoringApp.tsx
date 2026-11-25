@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Boxes, Copy, Download, Save, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { compileProject, defaultProject } from "./compiler";
-import { BUILTIN_PRESETS } from "./presets";
+import { compileBundle, defaultBundle } from "./compiler";
 import { deleteProject, deleteSnapshot, importSnapshots, listProjects, listSnapshots, loadProject, saveProject, saveSnapshot, type Snapshot } from "./storage";
 import { BasicPanel } from "./panels/BasicPanel";
 import { ExportPanel } from "./panels/ExportPanel";
@@ -12,8 +11,8 @@ import { InterfacePanel } from "./panels/InterfacePanel";
 import { MacrosPanel } from "./panels/MacrosPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { ImportDialog } from "./ImportDialog";
-import type { LayoutPreset, ProjectDoc } from "./types";
-import { libraries, normalizeProject, slug } from "./utils";
+import type { LayoutPreset, ProjectBundle } from "./types";
+import { libraries, normalizeBundle, portableBundle, slug } from "./utils";
 
 type Board = "basic" | "layouts" | "themes" | "interface" | "macros" | "export";
 
@@ -29,10 +28,10 @@ const BOARDS: Array<{ id: Board; label: string }> = [
 type Props = { open?: boolean; onClose?: () => void };
 
 export function AuthoringApp({ open = true, onClose }: Props) {
-  const [project, setProject] = useState<ProjectDoc>(() => defaultProject());
-  const [projects, setProjects] = useState<ProjectDoc[]>([]);
+  const [project, setProject] = useState<ProjectBundle>(() => defaultBundle());
+  const [projects, setProjects] = useState<ProjectBundle[]>([]);
   const [board, setBoard] = useState<Board>("layouts");
-  const [activeLayoutId, setActiveLayoutId] = useState(project.layoutId);
+  const [activeLayoutId, setActiveLayoutId] = useState(project.mainLayoutId);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -40,9 +39,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
 
   const libs = useMemo(() => libraries(project), [project]);
-  const yaml = useMemo(() => compileProject(project, BUILTIN_PRESETS), [project]);
+  const yaml = useMemo(() => compileBundle(project), [project]);
 
-  const refreshProjects = async (): Promise<ProjectDoc[]> => {
+  const refreshProjects = async (): Promise<ProjectBundle[]> => {
     const items = await listProjects();
     setProjects(items);
     return items;
@@ -54,9 +53,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     return items;
   };
 
-  const sameProject = (left: ProjectDoc, right: ProjectDoc): boolean => {
-    const strip = (value: ProjectDoc) => {
-      const copy = normalizeProject(value);
+  const sameProject = (left: ProjectBundle, right: ProjectBundle): boolean => {
+    const strip = (value: ProjectBundle) => {
+      const copy = normalizeBundle(value);
       delete copy.updatedAt;
       return JSON.stringify(copy);
     };
@@ -72,9 +71,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         if (cancelled) return;
         setProjects(items);
         if (items[0]) {
-          const next = normalizeProject(items[0]);
+          const next = normalizeBundle(items[0]);
           setProject(next);
-          setActiveLayoutId(next.layoutId);
+          setActiveLayoutId(next.mainLayoutId);
           setMessage(`已打开：${next.meta.name}`);
         }
       } catch (error) {
@@ -90,9 +89,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   useEffect(() => {
     if (!libs.layouts.some((item) => item.id === activeLayoutId)) {
-      setActiveLayoutId(project.layoutId);
+      setActiveLayoutId(project.mainLayoutId);
     }
-  }, [activeLayoutId, libs.layouts, project.layoutId]);
+  }, [activeLayoutId, libs.layouts, project.mainLayoutId]);
 
   useEffect(() => {
     if (!open) return;
@@ -100,7 +99,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, project.id]);
 
-  const mutate = (fn: (draft: ProjectDoc) => void) => {
+  const mutate = (fn: (draft: ProjectBundle) => void) => {
     setProject((current) => {
       const next = structuredClone(current);
       fn(next);
@@ -111,19 +110,21 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const editLayout = (id: string, fn: (layout: LayoutPreset) => void) => {
     const source = libraries(project).layouts.find((item) => item.id === id);
-    const cloneId = source?.builtin ? `custom-${id}-${Date.now()}` : undefined;
+    const embedded = project.layouts.some((item) => item.id === id);
+    const cloneId = !embedded || source?.builtin ? `custom-${id}-${Date.now()}` : undefined;
     setProject((current) => {
       const next = structuredClone(current);
+      const currentSource = libraries(next).layouts.find((item) => item.id === id);
+      if (!currentSource) return next;
       if (cloneId) {
-        const src = libraries(next).layouts.find((item) => item.id === id);
-        if (!src) return next;
-        const clone = { ...structuredClone(src), id: cloneId, builtin: false, name: `${src.name}（自定义）` };
-        next.customLayouts = [...(next.customLayouts ?? []), clone];
-        if (next.layoutId === id) next.layoutId = cloneId;
-        next.pageIds = (next.pageIds ?? []).map((pageId) => (pageId === id ? cloneId : pageId));
+        const clone = { ...structuredClone(currentSource), id: cloneId, builtin: false, name: `${currentSource.name}（自定义）` };
+        next.layouts = next.layouts.filter((item) => item.id !== id);
+        next.layouts.push(clone);
+        if (next.mainLayoutId === id) next.mainLayoutId = cloneId;
+        next.pageIds = next.pageIds.map((pageId) => (pageId === id ? cloneId : pageId));
         fn(clone);
       } else {
-        const target = (next.customLayouts ?? []).find((item) => item.id === id);
+        const target = next.layouts.find((item) => item.id === id);
         if (target) fn(target);
       }
       return next;
@@ -160,20 +161,20 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const exportSnapshot = (snapshot: Snapshot, format: "json" | "yaml") => {
     const stamp = new Date(snapshot.createdAt).toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const next = normalizeProject(snapshot.project);
+    const next = normalizeBundle(snapshot.project);
     const name = `${slug(next.meta.name)}-${stamp}`;
     if (format === "json") {
-      downloadText(JSON.stringify(next, null, 2), `${name}.json`, "application/json;charset=utf-8");
+      downloadText(JSON.stringify(portableBundle(next), null, 2), `${name}.json`, "application/json;charset=utf-8");
     } else {
-      downloadText(compileProject(next, BUILTIN_PRESETS), `${name}.yaml`, "text/yaml;charset=utf-8");
+      downloadText(compileBundle(next), `${name}.yaml`, "text/yaml;charset=utf-8");
     }
     setMessage(`已导出快照：${snapshot.label}`);
   };
 
   const exportSnapshotBundle = () => {
     const bundle = {
-      format: "trime-authoring-snapshots",
-      version: 1,
+      format: "trime-theme-snapshots",
+      version: 2,
       projectId: project.id,
       projectName: project.meta.name,
       exportedAt: new Date().toISOString(),
@@ -186,8 +187,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   const importSnapshotBundle = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as { format?: string; version?: number; snapshots?: Snapshot[] };
-      if (parsed.format !== "trime-authoring-snapshots" || parsed.version !== 1 || !Array.isArray(parsed.snapshots)) {
-        throw new Error("不是 trime-authoring-snapshots v1");
+      if (parsed.format !== "trime-theme-snapshots" || parsed.version !== 2 || !Array.isArray(parsed.snapshots)) {
+        throw new Error("不是 trime-theme-snapshots v2");
       }
       const count = await importSnapshots(project.id, parsed.snapshots);
       await refreshSnapshots(project.id);
@@ -202,9 +203,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
       if (!sameProject(project, snapshot.project)) {
         await saveSnapshot(project, "Auto · before restore");
       }
-      const next = normalizeProject(snapshot.project);
+      const next = normalizeBundle(snapshot.project);
       setProject(next);
-      setActiveLayoutId(next.layoutId);
+      setActiveLayoutId(next.mainLayoutId);
       setDirty(true);
       setMessage(`已恢复快照：${snapshot.label}`);
       await refreshSnapshots(project.id);
@@ -219,11 +220,11 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   };
 
   const createProject = () => {
-    const next = defaultProject();
+    const next = defaultBundle();
     next.id = `project-${Date.now()}`;
     next.meta.name = `新主题 ${projects.length + 1}`;
     setProject(next);
-    setActiveLayoutId(next.layoutId);
+    setActiveLayoutId(next.mainLayoutId);
     setBoard("basic");
     setDirty(true);
     setMessage("已新建项目（记得 Save）");
@@ -233,7 +234,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     const loaded = await loadProject(id);
     if (!loaded) return;
     setProject(loaded);
-    setActiveLayoutId(loaded.layoutId);
+    setActiveLayoutId(loaded.mainLayoutId);
     setDirty(false);
     setMessage(`已打开：${loaded.meta.name}`);
   };
@@ -242,24 +243,26 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     await deleteProject(id);
     const items = await refreshProjects();
     if (id === project.id) {
-      const fallback = items[0] ?? defaultProject();
+      const fallback = items[0] ?? defaultBundle();
       setProject(fallback);
-      setActiveLayoutId(fallback.layoutId);
+      setActiveLayoutId(fallback.mainLayoutId);
       setDirty(!items[0]);
       await refreshSnapshots(fallback.id);
     }
     setMessage("已删除项目");
   };
 
-  const importJson = async (file: File) => {
+  const importBundle = async (file: File) => {
     try {
-      const parsed = JSON.parse(await file.text()) as ProjectDoc;
-      if (parsed.version !== 1 || !parsed.meta || !parsed.themeCardId) throw new Error("不是 authoring project v1");
-      const next = normalizeProject(parsed);
+      const parsed = JSON.parse(await file.text()) as ProjectBundle;
+      if (parsed.format !== "trime-theme-bundle" || parsed.schemaVersion !== 2 || !parsed.meta || !parsed.theme) {
+        throw new Error("不是 trime-theme-bundle v2");
+      }
+      const next = normalizeBundle(parsed);
       setProject(next);
-      setActiveLayoutId(next.layoutId);
+      setActiveLayoutId(next.mainLayoutId);
       setDirty(true);
-      setMessage(`已导入项目：${file.name}（记得 Save）`);
+      setMessage(`已导入 bundle：${file.name}（记得 Save）`);
     } catch (error) {
       setMessage(`导入失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -273,9 +276,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     }
   };
 
-  const applyImport = (next: ProjectDoc, warnings: string[]) => {
+  const applyImport = (next: ProjectBundle, warnings: string[]) => {
     setProject(next);
-    setActiveLayoutId(next.layoutId);
+    setActiveLayoutId(next.mainLayoutId);
     setDirty(true);
     setPendingImport(null);
     setMessage(warnings[0] ?? "已导入 trime.yaml（记得 Save）");
@@ -291,7 +294,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     URL.revokeObjectURL(url);
   };
 
-  const exportJson = () => downloadText(JSON.stringify(project, null, 2), `${project.id}.json`, "application/json;charset=utf-8");
+  const exportBundle = () => downloadText(JSON.stringify(portableBundle(project), null, 2), `${project.id}.json`, "application/json;charset=utf-8");
 
   const copyYaml = async () => {
     await navigator.clipboard.writeText(yaml);
@@ -341,9 +344,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
             onNew={createProject}
             onOpen={(id) => void openProject(id)}
             onDelete={(id) => void removeProject(id)}
-            onImportJson={(file) => void importJson(file)}
+            onImportBundle={(file) => void importBundle(file)}
             onImportYaml={(file) => void pickImportYaml(file)}
-            onExportJson={exportJson}
+            onExportBundle={exportBundle}
             snapshots={snapshots}
             onSnapshot={(label) => void takeSnapshot(label)}
             onRestoreSnapshot={(snapshot) => void restoreSnapshot(snapshot)}
@@ -367,7 +370,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         {board === "themes" ? <ThemesPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
         {board === "interface" ? <InterfacePanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
         {board === "macros" ? <MacrosPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
-        {board === "export" ? <ExportPanel project={project} libs={libs} yaml={yaml} snapshots={snapshots} setMessage={setMessage} /> : null}
+        {board === "export" ? <ExportPanel project={project} yaml={yaml} snapshots={snapshots} setMessage={setMessage} /> : null}
       </main>
 
       {pendingImport ? (

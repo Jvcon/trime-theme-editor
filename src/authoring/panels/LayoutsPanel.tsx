@@ -8,15 +8,15 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActionField } from "../components/ActionField";
 import { BEHAVIORS, Selector } from "../components/Selector";
-import type { ActionRef, KeySlot, LayoutPreset, PresetLibraries, ProjectDoc } from "../types";
-import { actionLabel, cloneLayout, findLayout, fitLayoutRows, keyStyleColors, mainLayout, pages, reflowLayoutRows, tokenValue } from "../utils";
+import type { ActionRef, KeySlot, LayoutPreset, PresetLibraries, ProjectBundle } from "../types";
+import { actionLabel, cloneLayout, embedLayout, findLayout, fitLayoutRows, keyStyleColors, mainLayout, pages, pruneBundleLayouts, reflowLayoutRows, tokenValue } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
+  project: ProjectBundle;
   libs: PresetLibraries;
   activeLayoutId: string;
   setActiveLayoutId: (id: string) => void;
-  mutate: (fn: (draft: ProjectDoc) => void) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
   editLayout: (id: string, fn: (layout: LayoutPreset) => void) => void;
   setMessage: (message: string) => void;
 };
@@ -28,7 +28,7 @@ const targetOf = (slot: KeySlot | undefined, behavior: Behavior): ActionRef | un
 
 export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId, mutate, editLayout, setMessage }: Props) {
   const layout = findLayout(project, activeLayoutId, libs) ?? mainLayout(project, libs);
-  const card = libs.themeCards.find((item) => item.id === project.themeCardId) ?? libs.themeCards[0];
+  const card = project.theme ?? libs.themeCards[0];
   const [selected, setSelected] = useState<{ row: number; key: number }>();
   const [targetBehavior, setTargetBehavior] = useState<Behavior>("click");
   const [rightTab, setRightTab] = useState("page");
@@ -40,7 +40,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
   const selectedKey = selected ? layout.rows[selected.row]?.keys[selected.key] : undefined;
   const main = mainLayout(project, libs);
   const allPages = pages(project, libs);
-  const availablePages = libs.layouts.filter((item) => item.id !== main.id && !(project.pageIds ?? []).includes(item.id));
+  const availablePages = libs.layouts.filter((item) => item.id !== main.id && !project.layouts.some((layout) => layout.id === item.id));
 
   const choose = (id: string) => {
     setActiveLayoutId(id);
@@ -196,13 +196,26 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     });
   };
 
+  const selectMainLayout = (id: string) => {
+    const next = libs.layouts.find((item) => item.id === id);
+    if (!next) return;
+    mutate((draft) => {
+      embedLayout(draft, next);
+      draft.mainLayoutId = next.id;
+      draft.pageIds = draft.pageIds.filter((pageId) => pageId !== next.id);
+      pruneBundleLayouts(draft);
+    });
+    choose(id);
+  };
+
   const duplicateLayout = () => {
     const source = layout;
     const clone = cloneLayout(source, `${source.name} 副本`);
     mutate((draft) => {
-      draft.customLayouts = [...(draft.customLayouts ?? []), clone];
-      if (draft.layoutId === source.id) draft.layoutId = clone.id;
-      else draft.pageIds = (draft.pageIds ?? []).map((id) => (id === source.id ? clone.id : id));
+      draft.layouts.push(clone);
+      if (draft.mainLayoutId === source.id) draft.mainLayoutId = clone.id;
+      else draft.pageIds = draft.pageIds.map((id) => (id === source.id ? clone.id : id));
+      pruneBundleLayouts(draft);
     });
     choose(clone.id);
     setMessage(`已复制布局：${clone.name}`);
@@ -214,8 +227,9 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     clone.pageRole = "number";
     clone.rows = [{ height: 52, keys: [{ style: "default", width: 100, click: { kind: "char", value: "a" }, label: "A" }] }];
     mutate((draft) => {
-      draft.customLayouts = [...(draft.customLayouts ?? []), clone];
-      draft.pageIds = [...(draft.pageIds ?? []), clone.id];
+      draft.layouts.push(clone);
+      draft.pageIds = [...draft.pageIds, clone.id];
+      pruneBundleLayouts(draft);
     });
     choose(clone.id);
     setMessage("已新增空白页");
@@ -223,35 +237,46 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
 
   const deleteLayout = () => {
     if (layout.builtin) return setMessage("内置布局只读；请复制后再编辑");
+    const fallback = libs.layouts.find((item) => item.id === "qwerty26") ?? libs.layouts.find((item) => item.pageRole === "main");
     mutate((draft) => {
-      draft.customLayouts = (draft.customLayouts ?? []).filter((item) => item.id !== layout.id);
-      if (draft.layoutId === layout.id) draft.layoutId = "qwerty26";
-      draft.pageIds = (draft.pageIds ?? []).filter((id) => id !== layout.id);
+      draft.layouts = draft.layouts.filter((item) => item.id !== layout.id);
+      draft.pageIds = draft.pageIds.filter((id) => id !== layout.id);
+      if (draft.mainLayoutId === layout.id && fallback) {
+        embedLayout(draft, fallback);
+        draft.mainLayoutId = fallback.id;
+      }
+      pruneBundleLayouts(draft);
     });
-    choose(project.layoutId === layout.id ? "qwerty26" : project.layoutId);
+    choose(project.mainLayoutId === layout.id ? fallback?.id ?? project.mainLayoutId : project.mainLayoutId);
     setMessage("已删除布局");
   };
 
   const addPage = (id: string) => {
     if (!id) return;
+    const next = libs.layouts.find((item) => item.id === id);
+    if (!next) return;
     mutate((draft) => {
-      draft.pageIds = [...(draft.pageIds ?? []).filter((item) => item !== id), id];
+      embedLayout(draft, next);
+      draft.pageIds = [...draft.pageIds.filter((item) => item !== id), id];
+      pruneBundleLayouts(draft);
     });
     choose(id);
   };
 
   const removePage = (id: string) => {
     mutate((draft) => {
-      draft.pageIds = (draft.pageIds ?? []).filter((item) => item !== id);
+      draft.pageIds = draft.pageIds.filter((item) => item !== id);
+      draft.layouts = draft.layouts.filter((item) => item.id !== id);
+      pruneBundleLayouts(draft);
     });
-    if (activeLayoutId === id) choose(project.layoutId);
+    if (activeLayoutId === id) choose(project.mainLayoutId);
   };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Main</span>
-        <Select className="h-7 w-40" value={main.id} onChange={(event) => { mutate((draft) => { draft.layoutId = event.target.value; }); choose(event.target.value); }}>
+        <Select className="h-7 w-40" value={main.id} onChange={(event) => selectMainLayout(event.target.value)}>
           {libs.layouts.filter((item) => item.pageRole === "main").map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
         </Select>
         <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">Pages</span>

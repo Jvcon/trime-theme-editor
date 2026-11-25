@@ -7,33 +7,49 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { macroToken } from "../compiler";
 import { KEYCODES } from "../catalogs";
-import type { MacroPreset, PresetLibraries, ProjectDoc } from "../types";
+import type { MacroPreset, PresetLibraries, ProjectBundle } from "../types";
 import { cloneMacro, newMacro } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
+  project: ProjectBundle;
   libs: PresetLibraries;
-  mutate: (fn: (draft: ProjectDoc) => void) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
   setMessage: (message: string) => void;
 };
 
 export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
   const [selectedId, setSelectedId] = useState(libs.macros[0]?.id ?? "");
   const macro = libs.macros.find((item) => item.id === selectedId) ?? libs.macros[0];
-  const included = macro ? project.macroIds.includes(macro.id) : false;
+  const included = macro ? project.macros.some((item) => item.id === macro.id) : false;
 
   const edit = (fn: (macro: MacroPreset) => void) => {
     if (!macro || macro.builtin) return;
     mutate((draft) => {
-      const target = (draft.customMacros ?? []).find((item) => item.id === macro.id);
+      const target = draft.macros.find((item) => item.id === macro.id);
       if (target) fn(target);
     });
+  };
+
+  const clearReferences = (draft: ProjectBundle, id: string) => {
+    for (const layout of draft.layouts) {
+      for (const row of layout.rows) for (const key of row.keys) {
+        for (const behavior of ["click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right"] as const) {
+          const action = (key as unknown as Record<string, { kind: string; id?: string } | undefined>)[behavior];
+          if (action?.kind === "macro" && action.id === id) (key as unknown as Record<string, unknown>)[behavior] = undefined;
+        }
+      }
+    }
   };
 
   const toggleInclude = () => {
     if (!macro) return;
     mutate((draft) => {
-      draft.macroIds = included ? draft.macroIds.filter((id) => id !== macro.id) : [...draft.macroIds, macro.id];
+      if (included) {
+        draft.macros = draft.macros.filter((item) => item.id !== macro.id);
+        clearReferences(draft, macro.id);
+      } else {
+        draft.macros = [...draft.macros.filter((item) => item.id !== macro.id), structuredClone(macro)];
+      }
     });
   };
 
@@ -41,18 +57,16 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
     if (!macro) return;
     const clone = cloneMacro(macro, `${macro.name} 副本`);
     mutate((draft) => {
-      draft.customMacros = [...(draft.customMacros ?? []), clone];
-      draft.macroIds = [...new Set([...draft.macroIds, clone.id])];
+      draft.macros = [...draft.macros.filter((item) => item.id !== clone.id), clone];
     });
     setSelectedId(clone.id);
     setMessage(`已复制宏：${clone.name}`);
   };
 
   const create = () => {
-    const created = newMacro(`新宏 ${(project.customMacros ?? []).length + 1}`);
+    const created = newMacro(`新宏 ${project.macros.length + 1}`);
     mutate((draft) => {
-      draft.customMacros = [...(draft.customMacros ?? []), created];
-      draft.macroIds = [...new Set([...draft.macroIds, created.id])];
+      draft.macros = [...draft.macros, created];
     });
     setSelectedId(created.id);
     setMessage("已新建宏");
@@ -61,16 +75,8 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
   const remove = () => {
     if (!macro || macro.builtin) return;
     mutate((draft) => {
-      draft.customMacros = (draft.customMacros ?? []).filter((item) => item.id !== macro.id);
-      draft.macroIds = draft.macroIds.filter((id) => id !== macro.id);
-      for (const layout of draft.customLayouts ?? []) {
-        for (const row of layout.rows) for (const key of row.keys) {
-          for (const behavior of ["click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right"] as const) {
-            const action = (key as unknown as Record<string, { kind: string; id?: string } | undefined>)[behavior];
-            if (action?.kind === "macro" && action.id === macro.id) (key as unknown as Record<string, unknown>)[behavior] = undefined;
-          }
-        }
-      }
+      draft.macros = draft.macros.filter((item) => item.id !== macro.id);
+      clearReferences(draft, macro.id);
     });
     setSelectedId(libs.macros[0]?.id ?? "");
     setMessage("已删除宏");
@@ -86,7 +92,7 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
         </div>
         <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
           {libs.macros.map((item) => {
-            const used = project.macroIds.includes(item.id);
+            const used = project.macros.some((macro) => macro.id === item.id);
             return (
               <button
                 key={item.id}
@@ -113,7 +119,7 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
               <div className="ml-auto flex items-center gap-1">
                 <Button size="sm" variant={included ? "secondary" : "outline"} onClick={toggleInclude}>{included ? "Included" : "Include"}</Button>
                 <Button size="sm" variant="outline" onClick={duplicate}><Copy />Duplicate</Button>
-                <Button size="sm" variant="outline" className="text-red-300" disabled={macro.builtin} onClick={remove}><Trash2 />Delete</Button>
+                <Button size="sm" variant="outline" className="text-red-300" disabled={macro.builtin || !included} onClick={remove}><Trash2 />Delete</Button>
               </div>
             </div>
 

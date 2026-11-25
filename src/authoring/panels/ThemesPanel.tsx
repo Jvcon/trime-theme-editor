@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import type { KeyStyle, PresetLibraries, ProjectDoc, ThemeCardPreset, Variant } from "../types";
+import type { PresetLibraries, ProjectBundle, ThemeCardPreset, Variant } from "../types";
 import { BUILTIN_PRESETS } from "../presets";
 import { cloneThemeCard, newThemeCard, tokenValue } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
+  project: ProjectBundle;
   libs: PresetLibraries;
-  mutate: (fn: (draft: ProjectDoc) => void) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
   setMessage: (message: string) => void;
 };
 
@@ -38,7 +38,7 @@ const METRIC_FIELDS = [
 const BUILTIN_STYLES = new Set(["default", "modifier", "enter", "space", "off"]);
 
 export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
-  const card = libs.themeCards.find((item) => item.id === project.themeCardId) ?? libs.themeCards[0];
+  const card = project.theme;
   const variant = card.variants[project.variant];
   const [stateField, setStateField] = useState<(typeof STATE_FIELDS)[number]>("pressed");
   const [overrideToken, setOverrideToken] = useState("surface");
@@ -50,21 +50,10 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
     return [...tokens, ...states];
   }, [variant]);
 
-  const ensureCard = (draft: ProjectDoc): ThemeCardPreset | undefined => {
-    const source = [...BUILTIN_PRESETS.themeCards, ...(draft.customThemeCards ?? [])].find((item) => item.id === draft.themeCardId);
-    if (!source) return undefined;
-    if (!source.builtin) return (draft.customThemeCards ?? []).find((item) => item.id === source.id);
-    const clone = cloneThemeCard(source, `${source.name} 副本`);
-    draft.customThemeCards = [...(draft.customThemeCards ?? []), clone];
-    draft.themeCardId = clone.id;
-    return (draft.customThemeCards ?? []).find((item) => item.id === clone.id);
-  };
-
   const duplicateCard = () => {
     const clone = cloneThemeCard(card, `${card.name} 副本`);
     mutate((draft) => {
-      draft.customThemeCards = [...(draft.customThemeCards ?? []), clone];
-      draft.themeCardId = clone.id;
+      draft.theme = clone;
     });
     setMessage(`已复制色卡：${clone.name}`);
   };
@@ -72,26 +61,22 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
   const createCard = () => {
     const created = newThemeCard("新色卡");
     mutate((draft) => {
-      draft.customThemeCards = [...(draft.customThemeCards ?? []), created];
-      draft.themeCardId = created.id;
+      draft.theme = created;
     });
     setMessage("已新建色卡");
   };
 
   const deleteCard = () => {
     if (card.builtin) return setMessage("内置色卡只读；请复制后再编辑");
+    const fallback = BUILTIN_PRESETS.themeCards[0];
     mutate((draft) => {
-      draft.customThemeCards = (draft.customThemeCards ?? []).filter((item) => item.id !== card.id);
-      draft.themeCardId = "dracula";
+      draft.theme = structuredClone(fallback);
     });
     setMessage("已删除色卡");
   };
 
-  const editCard = (fn: (card: ThemeCardPreset, draft: ProjectDoc) => void) => {
-    mutate((draft) => {
-      const target = ensureCard(draft);
-      if (target) fn(target, draft);
-    });
+  const editCard = (fn: (card: ThemeCardPreset, draft: ProjectBundle) => void) => {
+    mutate((draft) => fn(draft.theme, draft));
   };
 
   const addStyle = () => {
@@ -111,7 +96,7 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
     if (BUILTIN_STYLES.has(id)) return setMessage("内置 style type 不能删除");
     mutate((draft) => {
       delete draft.keyStyles[id];
-      for (const layout of draft.customLayouts ?? []) {
+      for (const layout of draft.layouts) {
         for (const row of layout.rows) for (const key of row.keys) if (key.style === id) key.style = "default";
       }
     });
@@ -133,7 +118,11 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
     <div className="h-full overflow-auto p-5">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">Theme card</span>
-        <Select className="w-44" value={card.id} onChange={(event) => mutate((draft) => { draft.themeCardId = event.target.value; })}>
+        <Select className="w-44" value={card.id} onChange={(event) => {
+          const next = libs.themeCards.find((item) => item.id === event.target.value);
+          if (!next) return;
+          mutate((draft) => { draft.theme = structuredClone(next); });
+        }}>
           {libs.themeCards.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? " · builtin" : " · custom"}</option>)}
         </Select>
         <Select className="w-24" value={project.variant} onChange={(event) => mutate((draft) => { draft.variant = event.target.value as Variant; })}>

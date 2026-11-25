@@ -1,6 +1,7 @@
 import YAML from "yaml";
-import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, PreeditConfig, ProjectDoc, ThemeCardPreset, ToolbarButton, Variant, WindowConfig } from "./types";
-import { defaultKeyStyles, normalizeChrome } from "./utils";
+import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, Variant, WindowConfig } from "./types";
+import { defaultChrome, defaultKeyStyles, normalizeBundle, normalizeChrome } from "./utils";
+import { BUILTIN_PRESETS } from "./presets";
 
 const PREFIX: Record<string, string> = {
   default: "key",
@@ -255,7 +256,6 @@ function actionToken(action: ActionRef | undefined): string | undefined {
 
 function compileKey(
   slot: KeySlot,
-  macros: MacroPreset[],
   rowHeight: number | undefined,
   first: boolean,
   variant: ThemeCardPreset["variants"][Variant],
@@ -297,7 +297,6 @@ function compileKey(
 
 function compileLayout(
   layout: LayoutPreset,
-  macros: MacroPreset[],
   variant: ThemeCardPreset["variants"][Variant],
   keyStyles: Record<string, KeyStyle>,
 ) {
@@ -308,43 +307,47 @@ function compileLayout(
         keys.push({ width: Number((slot.width ?? 10).toFixed(3)) });
         return;
       }
-      keys.push(compileKey(slot, macros, row.height, index === 0, variant, keyStyles));
+      keys.push(compileKey(slot, row.height, index === 0, variant, keyStyles));
     });
   }
   const firstHeight = layout.rows[0]?.height;
   return { name: layout.name, ascii_mode: 0, ...(firstHeight ? { height: firstHeight } : {}), keys };
 }
 
-export function compileProject(project: ProjectDoc, basePresets: PresetLibraries): string {
-  const presets: PresetLibraries = {
-    themeCards: [...basePresets.themeCards, ...(project.customThemeCards ?? [])],
-    layouts: [...basePresets.layouts, ...(project.customLayouts ?? [])],
-    macros: [...basePresets.macros, ...(project.customMacros ?? [])],
-  };
-  const card = presets.themeCards.find((item) => item.id === project.themeCardId) ?? presets.themeCards[0];
-  const variant = card.variants[project.variant] ?? card.variants.light;
-  const layout = presets.layouts.find((item) => item.id === project.layoutId) ?? presets.layouts[0];
-  const pageIds = (project.pageIds ?? []).filter((id) => id !== layout.id);
+/**
+ * Canonical YAML output. Map keys are sorted with a locale-independent
+ * comparator so equivalent bundles always produce byte-identical files.
+ */
+export function stringifyTrime(value: unknown): string {
+  return YAML.stringify(value, {
+    lineWidth: 0,
+    indent: 2,
+    sortMapEntries: (a, b) => {
+      const left = String(a.key);
+      const right = String(b.key);
+      return left < right ? -1 : left > right ? 1 : 0;
+    },
+  });
+}
+
+/**
+ * Compiles a v2 bundle into a single trime.yaml. The bundle is the only
+ * source of presets: there is no fallback to built-in libraries here.
+ */
+export function compileBundle(input: ProjectBundle): string {
+  const bundle = normalizeBundle(input);
+  const card = bundle.theme;
+  const variant = card.variants[bundle.variant] ?? card.variants.light;
+  const layout = bundle.layouts.find((item) => item.id === bundle.mainLayoutId) ?? bundle.layouts[0];
+  const pageIds = bundle.pageIds.filter((id) => id !== layout.id);
   const pages = [
     layout,
-    ...pageIds.map((id) => presets.layouts.find((item) => item.id === id)).filter((item): item is LayoutPreset => Boolean(item)),
+    ...pageIds.map((id) => bundle.layouts.find((item) => item.id === id)).filter((item): item is LayoutPreset => Boolean(item)),
   ];
-  const usedMacros = new Set<string>();
-  const collect = (action: ActionRef | undefined) => {
-    if (action?.kind === "macro") usedMacros.add(action.id);
-  };
-  for (const p of pages) {
-    for (const row of p.rows) for (const slot of row.keys) {
-      collect(slot.click);
-      collect(slot.long_click);
-      collect(slot.double_click);
-      collect(slot.swipe_up);
-      collect(slot.swipe_down);
-      collect(slot.swipe_left);
-      collect(slot.swipe_right);
-    }
-  }
-  const allMacros = presets.macros.filter((item) => project.macroIds.includes(item.id) || usedMacros.has(item.id));
+  // Bundle macros are the selected set. References to macros that are not in
+  // the bundle are reported by the Export panel validation instead of being
+  // silently resolved from the built-in catalog.
+  const allMacros = bundle.macros;
 
   const presetKeys: Record<string, unknown> = {};
   for (const item of allMacros) {
@@ -358,24 +361,24 @@ export function compileProject(project: ProjectDoc, basePresets: PresetLibraries
   presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
 
   const presetKeyboards: Record<string, unknown> = {};
-  for (const p of pages) presetKeyboards[p.id] = compileLayout(p, allMacros, variant, project.keyStyles);
+  for (const p of pages) presetKeyboards[p.id] = compileLayout(p, variant, bundle.keyStyles);
   if (layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
   const firstRowHeight = layout.rows[0]?.height ?? 52;
-  const metrics = project.metrics ?? {};
-  const chrome = normalizeChrome(project.chrome);
+  const metrics = bundle.metrics ?? {};
+  const chrome = normalizeChrome(bundle.chrome);
   for (const [name, value] of Object.entries(liquidPresetKeys(chrome.liquid))) {
     if (!presetKeys[name]) presetKeys[name] = value;
   }
-  for (const [name, value] of Object.entries(project.customPresetKeys ?? {})) {
+  for (const [name, value] of Object.entries(bundle.customPresetKeys ?? {})) {
     if (name.startsWith("Keyboard_")) continue;
     presetKeys[name] = value;
   }
 
-  return YAML.stringify({
-    config_version: project.meta.configVersion || "3.0",
-    name: project.meta.name,
-    author: project.meta.author,
+  return stringifyTrime({
+    config_version: bundle.meta.configVersion || "3.0",
+    name: bundle.meta.name,
+    author: bundle.meta.author,
     style: {
       key_width: metrics.keyWidth ?? 10,
       key_height: metrics.keyHeight ?? firstRowHeight,
@@ -407,26 +410,46 @@ export function compileProject(project: ProjectDoc, basePresets: PresetLibraries
       key_symbol_color: "comment_text_color",
     },
     preset_color_schemes: {
-      light: buildScheme(card, "light", project.keyStyles),
-      dark: { ...buildScheme(card, "dark", project.keyStyles), light_scheme: "light" },
+      light: buildScheme(card, "light", bundle.keyStyles),
+      dark: { ...buildScheme(card, "dark", bundle.keyStyles), light_scheme: "light" },
     },
     preset_keys: presetKeys,
     preset_keyboards: presetKeyboards,
     liquid_keyboard: compileLiquid(chrome.liquid),
-  }, { lineWidth: 0 });
+  });
 }
 
-export function defaultProject(): ProjectDoc {
+function embeddedPreset<T extends { id: string }>(items: T[], id: string): T {
+  const found = items.find((item) => item.id === id) ?? items[0];
+  return structuredClone(found);
+}
+
+export function defaultBundle(): ProjectBundle {
+  const main = embeddedPreset(BUILTIN_PRESETS.layouts.filter((item) => item.pageRole === "main"), "qwerty26");
+  const pages = ["number", "symbols"]
+    .map((id) => BUILTIN_PRESETS.layouts.find((item) => item.id === id))
+    .filter((item): item is LayoutPreset => Boolean(item))
+    .map((item) => structuredClone(item));
+  const macroIds = ["pair-paren", "pair-bracket", "pair-brace", "select-all", "cut", "copy", "paste"];
+  const macros = macroIds
+    .map((id) => BUILTIN_PRESETS.macros.find((item) => item.id === id))
+    .filter((item): item is MacroPreset => Boolean(item))
+    .map((item) => structuredClone(item));
   return {
-    version: 1,
+    format: "trime-theme-bundle",
+    schemaVersion: 2,
     id: "default",
     meta: { name: "My Trime Theme", author: "trime-theme-editor", description: "", configVersion: "3.0" },
-    themeCardId: "dracula",
+    devices: [{ id: "phone", kind: "phone", orientation: "portrait" }],
+    schemaBindings: [],
+    mainLayoutId: main.id,
+    pageIds: pages.map((item) => item.id),
+    theme: structuredClone(BUILTIN_PRESETS.themeCards.find((item) => item.id === "dracula") ?? BUILTIN_PRESETS.themeCards[0]),
     variant: "dark",
-    layoutId: "qwerty26",
-    pageIds: ["number", "symbols"],
-    macroIds: ["pair-paren", "pair-bracket", "pair-brace", "select-all", "cut", "copy", "paste"],
     keyStyles: defaultKeyStyles(),
-    chrome: normalizeChrome(undefined),
+    layouts: [main, ...pages],
+    macros,
+    chrome: defaultChrome(),
+    passthrough: {},
   };
 }

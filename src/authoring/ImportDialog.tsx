@@ -3,22 +3,22 @@ import { AlertTriangle, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { importTrimeYaml, type ImportOptions } from "./importer";
-import type { ProjectDoc } from "./types";
+import type { ProjectBundle } from "./types";
 
 type Props = {
   source: string;
   fileName: string;
-  onApply: (project: ProjectDoc, warnings: string[]) => void;
+  onApply: (project: ProjectBundle, warnings: string[]) => void;
   onCancel: () => void;
 };
 
 export function ImportDialog({ source, fileName, onApply, onCancel }: Props) {
   const [options, setOptions] = useState<ImportOptions>({ themeCard: true, interface: true, keyboards: "all" });
   const preview = useMemo(() => importTrimeYaml(source, fileName, options), [source, fileName, options]);
-  const allLayouts = useMemo(() => importTrimeYaml(source, fileName, { ...options, keyboards: "all" }).project.customLayouts?.length ?? 0, [source, fileName, options]);
+  const allLayouts = useMemo(() => importTrimeYaml(source, fileName, { ...options, keyboards: "all" }).project.layouts.length, [source, fileName, options]);
   const project = preview.project;
-  const layouts = project.customLayouts?.length ?? 0;
-  const macros = project.customMacros?.length ?? 0;
+  const layouts = project.layouts.length;
+  const macros = project.macros.length;
   const chrome = project.chrome;
 
   return (
@@ -43,7 +43,7 @@ export function ImportDialog({ source, fileName, onApply, onCancel }: Props) {
               <Badge variant="muted">{chrome?.toolbar.buttons.length ?? 0} toolbar buttons</Badge>
             </div>
             <div className="mt-2 text-[10px] text-muted-foreground">
-              main: <code>{project.layoutId}</code> · author: {project.meta.author || "—"}
+              main: <code>{project.mainLayoutId}</code> · author: {project.meta.author || "—"}
             </div>
           </div>
 

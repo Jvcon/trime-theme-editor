@@ -1,11 +1,28 @@
 import { BUILTIN_PRESETS, DEFAULT_LIQUID, DEFAULT_PREEDIT, DEFAULT_TOOLBAR, DEFAULT_WINDOW, KEY_STYLES } from "./presets";
-import type { ActionRef, ChromeConfig, ChromePatch, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectDoc, ThemeCardPreset } from "./types";
+import type { ActionRef, ChromeConfig, ChromePatch, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset } from "./types";
 
-export function libraries(project: ProjectDoc): PresetLibraries {
+function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
+  const seen = new Set<string>();
+  const output: T[] = [];
+  for (const group of groups) {
+    for (const item of group) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      output.push(item);
+    }
+  }
+  return output;
+}
+
+/**
+ * UI catalog: embedded bundle presets first, then built-ins for the pickers.
+ * Compilation never reads this catalog; it only reads the bundle.
+ */
+export function libraries(bundle: ProjectBundle): PresetLibraries {
   return {
-    themeCards: [...BUILTIN_PRESETS.themeCards, ...(project.customThemeCards ?? [])],
-    layouts: [...BUILTIN_PRESETS.layouts, ...(project.customLayouts ?? [])],
-    macros: [...BUILTIN_PRESETS.macros, ...(project.customMacros ?? [])],
+    themeCards: mergeById([bundle.theme], BUILTIN_PRESETS.themeCards),
+    layouts: mergeById(bundle.layouts, BUILTIN_PRESETS.layouts),
+    macros: mergeById(bundle.macros, BUILTIN_PRESETS.macros),
   };
 }
 
@@ -98,23 +115,72 @@ function normalizeLiquid(input: Partial<LiquidConfig> | undefined, base: LiquidC
   };
 }
 
-export function normalizeProject(input: ProjectDoc): ProjectDoc {
-  const project = structuredClone(input);
-  project.meta = {
-    ...project.meta,
-    name: project.meta?.name || "Untitled Trime Theme",
-    author: project.meta?.author || "",
-    configVersion: project.meta?.configVersion || "3.0",
+/** Adds a catalog layout to the bundle without replacing an existing id. */
+export function embedLayout(bundle: ProjectBundle, layout: LayoutPreset): LayoutPreset {
+  const existing = bundle.layouts.find((item) => item.id === layout.id);
+  if (existing) return existing;
+  const copy = structuredClone(layout);
+  bundle.layouts.push(copy);
+  return copy;
+}
+
+export function pruneBundleLayouts(bundle: ProjectBundle): void {
+  const main = bundle.layouts.find((item) => item.id === bundle.mainLayoutId) ?? bundle.layouts[0];
+  if (!main) return;
+  bundle.mainLayoutId = main.id;
+  const pages = bundle.pageIds
+    .map((id) => bundle.layouts.find((item) => item.id === id))
+    .filter((item): item is LayoutPreset => item !== undefined && item.id !== main.id);
+  bundle.pageIds = pages.map((item) => item.id);
+  bundle.layouts = [main, ...pages];
+}
+
+function fallbackTheme(): ThemeCardPreset {
+  return structuredClone(BUILTIN_PRESETS.themeCards[0]);
+}
+
+function fallbackLayouts(): LayoutPreset[] {
+  return BUILTIN_PRESETS.layouts.slice(0, 3).map((item) => structuredClone(item));
+}
+
+/**
+ * Normalizes a v2 bundle in place and returns it. No v1 migration exists by
+ * design: this project has no production data to preserve.
+ */
+export function normalizeBundle(input: ProjectBundle): ProjectBundle {
+  const bundle = structuredClone(input);
+  bundle.format = "trime-theme-bundle";
+  bundle.schemaVersion = 2;
+  bundle.id = bundle.id || "trime-theme";
+  bundle.meta = {
+    ...bundle.meta,
+    name: bundle.meta?.name || "Untitled Trime Theme",
+    author: bundle.meta?.author || "",
+    configVersion: bundle.meta?.configVersion || "3.0",
   };
-  project.pageIds = (project.pageIds ?? ["number", "symbols"]).filter((id) => id !== project.layoutId);
-  project.macroIds = project.macroIds ?? [];
-  project.keyStyles = project.keyStyles ?? defaultKeyStyles();
-  project.chrome = normalizeChrome(project.chrome);
-  project.customLayouts = project.customLayouts ?? [];
-  project.customMacros = project.customMacros ?? [];
-  project.customThemeCards = project.customThemeCards ?? [];
-  project.customPresetKeys = project.customPresetKeys ?? {};
-  return project;
+  bundle.theme = bundle.theme ?? fallbackTheme();
+  bundle.variant = bundle.variant === "light" ? "light" : "dark";
+  bundle.keyStyles = bundle.keyStyles ?? defaultKeyStyles();
+  bundle.macros = Array.isArray(bundle.macros) ? bundle.macros : [];
+  bundle.layouts = Array.isArray(bundle.layouts) && bundle.layouts.length > 0 ? bundle.layouts : fallbackLayouts();
+  bundle.mainLayoutId = bundle.mainLayoutId || bundle.layouts.find((item) => item.pageRole === "main")?.id || bundle.layouts[0].id;
+  bundle.pageIds = (Array.isArray(bundle.pageIds) ? bundle.pageIds : []).filter((id) => id !== bundle.mainLayoutId);
+  bundle.devices = Array.isArray(bundle.devices) && bundle.devices.length > 0
+    ? bundle.devices
+    : [{ id: "phone", kind: "phone", orientation: "portrait" }];
+  bundle.schemaBindings = Array.isArray(bundle.schemaBindings) ? bundle.schemaBindings : [];
+  bundle.chrome = normalizeChrome(bundle.chrome);
+  bundle.customPresetKeys = bundle.customPresetKeys ?? {};
+  bundle.passthrough = bundle.passthrough ?? {};
+  pruneBundleLayouts(bundle);
+  return bundle;
+}
+
+/** Export form: no storage timestamp, so the bundle is stable and diffable. */
+export function portableBundle(bundle: ProjectBundle): ProjectBundle {
+  const copy = normalizeBundle(bundle);
+  delete copy.updatedAt;
+  return copy;
 }
 
 export function actionLabel(action: ActionRef | undefined, libs?: PresetLibraries): string {
@@ -153,18 +219,20 @@ export function keyStyleColors(card: ThemeCardPreset, variant: "light" | "dark",
   };
 }
 
-export function mainLayout(project: ProjectDoc, libs = libraries(project)): LayoutPreset {
-  return libs.layouts.find((item) => item.id === project.layoutId) ?? libs.layouts[0];
+export function mainLayout(bundle: ProjectBundle, libs = libraries(bundle)): LayoutPreset {
+  return libs.layouts.find((item) => item.id === bundle.mainLayoutId)
+    ?? bundle.layouts.find((item) => item.id === bundle.mainLayoutId)
+    ?? libs.layouts[0];
 }
 
-export function findLayout(project: ProjectDoc, id: string, libs = libraries(project)): LayoutPreset | undefined {
+export function findLayout(bundle: ProjectBundle, id: string, libs = libraries(bundle)): LayoutPreset | undefined {
   return libs.layouts.find((item) => item.id === id);
 }
 
-export function pages(project: ProjectDoc, libs = libraries(project)): LayoutPreset[] {
-  const main = mainLayout(project, libs);
+export function pages(bundle: ProjectBundle, libs = libraries(bundle)): LayoutPreset[] {
+  const main = mainLayout(bundle, libs);
   const result: LayoutPreset[] = [main];
-  for (const id of project.pageIds ?? []) {
+  for (const id of bundle.pageIds ?? []) {
     const layout = libs.layouts.find((item) => item.id === id);
     if (layout && layout.id !== main.id) result.push(layout);
   }

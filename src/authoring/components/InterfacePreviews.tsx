@@ -3,7 +3,7 @@ import {
   ArrowLeft, ChevronDown, Clipboard, Languages, List, Mic, MoreHorizontal,
   Palette, Settings, Smile, Square, Undo2,
 } from "lucide-react";
-import type { PresetLibraries, ProjectDoc, ThemeCardPreset, ToolbarButton } from "../types";
+import type { PresetLibraries, ProjectBundle, ThemeCardPreset, ToolbarButton } from "../types";
 import { defaultChrome, tokenValue } from "../utils";
 
 const TOOLBAR_ICONS: Record<string, typeof Square> = {
@@ -36,8 +36,8 @@ const FIXED_KEY_LABELS: Record<string, string> = {
   clipboard_window: "剪贴",
 };
 
-function palette(project: ProjectDoc, libs: PresetLibraries) {
-  const card = libs.themeCards.find((item) => item.id === project.themeCardId) ?? libs.themeCards[0];
+function palette(project: ProjectBundle, libs: PresetLibraries) {
+  const card = project.theme ?? libs.themeCards[0];
   const variant = project.variant;
   const color = (token: string, fallback: string) => {
     const value = tokenValue(card, variant, token);
@@ -98,7 +98,7 @@ function ToolbarButtonView({ button, colors }: { button: ToolbarButton; colors: 
   );
 }
 
-export function ToolbarPreview({ project, libs }: { project: ProjectDoc; libs: PresetLibraries }) {
+export function ToolbarPreview({ project, libs }: { project: ProjectBundle; libs: PresetLibraries }) {
   const colors = palette(project, libs);
   const toolbar = (project.chrome ?? defaultChrome()).toolbar;
   return (
@@ -127,7 +127,7 @@ export function ToolbarPreview({ project, libs }: { project: ProjectDoc; libs: P
   );
 }
 
-export function LiquidPreview({ project, libs, tabId, onTab }: { project: ProjectDoc; libs: PresetLibraries; tabId: string; onTab: (id: string) => void }) {
+export function LiquidPreview({ project, libs, tabId, onTab }: { project: ProjectBundle; libs: PresetLibraries; tabId: string; onTab: (id: string) => void }) {
   const colors = palette(project, libs);
   const liquid = (project.chrome ?? defaultChrome()).liquid;
   const selected = liquid.tabs.find((tab) => tab.id === tabId) ?? liquid.tabs[0];
@@ -229,7 +229,7 @@ function FixedBar({ liquid, colors }: { liquid: ReturnType<typeof defaultChrome>
   );
 }
 
-export function WindowPreview({ project, libs }: { project: ProjectDoc; libs: PresetLibraries }) {
+export function WindowPreview({ project, libs }: { project: ProjectBundle; libs: PresetLibraries }) {
   const colors = palette(project, libs);
   const chrome = project.chrome ?? defaultChrome();
   const config = chrome.window;
@@ -281,7 +281,7 @@ export function WindowPreview({ project, libs }: { project: ProjectDoc; libs: Pr
   );
 }
 
-export function PreeditPreview({ project, libs }: { project: ProjectDoc; libs: PresetLibraries }) {
+export function PreeditPreview({ project, libs }: { project: ProjectBundle; libs: PresetLibraries }) {
   const colors = palette(project, libs);
   const config = (project.chrome ?? defaultChrome()).preedit;
   return (

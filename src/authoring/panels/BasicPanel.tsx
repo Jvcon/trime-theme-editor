@@ -5,23 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import type { PresetLibraries, ProjectDoc } from "../types";
+import type { PresetLibraries, ProjectBundle } from "../types";
 import type { Snapshot } from "../storage";
-import { pages } from "../utils";
+import { embedLayout, pages, pruneBundleLayouts } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
-  projects: ProjectDoc[];
+  project: ProjectBundle;
+  projects: ProjectBundle[];
   libs: PresetLibraries;
   dirty: boolean;
-  mutate: (fn: (draft: ProjectDoc) => void) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
   onSave: () => void;
   onNew: () => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
-  onImportJson: (file: File) => void;
+  onImportBundle: (file: File) => void;
   onImportYaml: (file: File) => void;
-  onExportJson: () => void;
+  onExportBundle: () => void;
   snapshots: Snapshot[];
   onSnapshot: (label: string) => void;
   onRestoreSnapshot: (snapshot: Snapshot) => void;
@@ -31,11 +31,30 @@ type Props = {
   onImportSnapshotBundle: (file: File) => void;
 };
 
-export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onNew, onOpen, onDelete, onImportJson, onImportYaml, onExportJson, snapshots, onSnapshot, onRestoreSnapshot, onDeleteSnapshot, onExportSnapshot, onExportSnapshotBundle, onImportSnapshotBundle }: Props) {
+export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onNew, onOpen, onDelete, onImportBundle, onImportYaml, onExportBundle, snapshots, onSnapshot, onRestoreSnapshot, onDeleteSnapshot, onExportSnapshot, onExportSnapshotBundle, onImportSnapshotBundle }: Props) {
   const [snapshotLabel, setSnapshotLabel] = useState("");
-  const card = libs.themeCards.find((item) => item.id === project.themeCardId);
-  const main = libs.layouts.find((item) => item.id === project.layoutId);
+  const card = project.theme;
+  const main = project.layouts.find((item) => item.id === project.mainLayoutId);
   const allPages = pages(project, libs);
+
+  const selectThemeCard = (id: string) => {
+    const next = libs.themeCards.find((item) => item.id === id);
+    if (!next) return;
+    mutate((draft) => {
+      draft.theme = structuredClone(next);
+    });
+  };
+
+  const selectMainLayout = (id: string) => {
+    const next = libs.layouts.find((item) => item.id === id);
+    if (!next) return;
+    mutate((draft) => {
+      embedLayout(draft, next);
+      draft.mainLayoutId = next.id;
+      draft.pageIds = draft.pageIds.filter((pageId) => pageId !== next.id);
+      pruneBundleLayouts(draft);
+    });
+  };
 
   return (
     <div className="h-full overflow-auto p-5">
@@ -49,7 +68,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
             <Field label="Config version"><Input value={project.meta.configVersion} onChange={(event) => mutate((draft) => { draft.meta.configVersion = event.target.value; })} /></Field>
             <div className="grid grid-cols-2 gap-2">
               <Field label="Theme card">
-                <Select value={project.themeCardId} onChange={(event) => mutate((draft) => { draft.themeCardId = event.target.value; })}>
+                <Select value={card.id} onChange={(event) => selectThemeCard(event.target.value)}>
                   {libs.themeCards.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? " · builtin" : " · custom"}</option>)}
                 </Select>
               </Field>
@@ -61,7 +80,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
               </Field>
             </div>
             <Field label="Main layout">
-              <Select value={project.layoutId} onChange={(event) => mutate((draft) => { draft.layoutId = event.target.value; })}>
+              <Select value={project.mainLayoutId} onChange={(event) => selectMainLayout(event.target.value)}>
                 {libs.layouts.filter((item) => item.pageRole === "main").map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? " · builtin" : " · custom"}</option>)}
               </Select>
             </Field>
@@ -89,14 +108,14 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
           </div>
           <div className="flex flex-wrap gap-1">
             <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded border border-border px-2 text-xs hover:bg-muted">
-              <Upload className="size-3" /> Import JSON
+              <Upload className="size-3" /> Import bundle
               <input type="file" accept=".json,application/json" hidden onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                if (file) onImportJson(file);
+                if (file) onImportBundle(file);
               }} />
             </label>
-            <Button size="sm" variant="outline" onClick={onExportJson}><Download />Export JSON</Button>
+            <Button size="sm" variant="outline" onClick={onExportBundle}><Download />Export bundle</Button>
             <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded border border-border px-2 text-xs hover:bg-muted">
               <Upload className="size-3" /> Import trime.yaml
               <input type="file" accept=".yaml,.yml,text/yaml" hidden onChange={(event) => {
@@ -106,7 +125,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
               }} />
             </label>
           </div>
-          <p className="mt-2 text-[10px] text-muted-foreground">项目 JSON 含自定义色卡/布局/宏，导入后即可复现。也可以导入一份现有 trime.yaml（或 rime/trime.base.yaml），把 preset_keyboards / preset_keys / preset_color_schemes 转成可编辑项目。</p>
+          <p className="mt-2 text-[10px] text-muted-foreground">v2 bundle 只包含当前项目实际使用的色卡、布局和宏，可直接入库、diff、复现。也可以导入一份现有 trime.yaml，把 preset_keyboards / preset_keys / preset_color_schemes 转成可编辑项目。</p>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">
@@ -142,7 +161,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
                     <div className="text-[9px] text-muted-foreground">{new Date(snapshot.createdAt).toLocaleString()}</div>
                   </div>
                   <Button size="sm" variant="outline" className="h-7" onClick={() => onRestoreSnapshot(snapshot)}>Restore</Button>
-                  <Button size="sm" variant="ghost" className="h-7 px-1 text-[9px]" title="导出快照项目 JSON" onClick={() => onExportSnapshot(snapshot, "json")}>JSON</Button>
+                  <Button size="sm" variant="ghost" className="h-7 px-1 text-[9px]" title="导出快照 bundle JSON" onClick={() => onExportSnapshot(snapshot, "json")}>JSON</Button>
                   <Button size="sm" variant="ghost" className="h-7 px-1 text-[9px]" title="导出快照 trime.yaml" onClick={() => onExportSnapshot(snapshot, "yaml")}>YAML</Button>
                   <button type="button" className="px-1 text-red-300" onClick={() => onDeleteSnapshot(snapshot.key)}><Trash2 className="size-3" /></button>
                 </div>
@@ -154,20 +173,21 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
         <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">
           <h2 className="mb-3 text-sm font-semibold">Composition</h2>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Theme card" value={card?.name ?? "—"} detail={project.variant} />
-            <Stat label="Main layout" value={main?.name ?? "—"} detail={project.layoutId} />
+            <Stat label="Theme card" value={card.name} detail={project.variant} />
+            <Stat label="Main layout" value={main?.name ?? "—"} detail={project.mainLayoutId} />
             <Stat label="Pages" value={allPages.map((item) => item.name).join(" / ")} detail={`${allPages.length} keyboards`} />
-            <Stat label="Macros" value={String(project.macroIds.length)} detail={`${libs.macros.length} available`} />
+            <Stat label="Macros" value={String(project.macros.length)} detail={`${libs.macros.length} available`} />
             <Stat label="Key styles" value={String(Object.keys(project.keyStyles).length)} detail="token references" />
-            <Stat label="Custom layouts" value={String(project.customLayouts?.length ?? 0)} detail="saved in project" />
-            <Stat label="Custom macros" value={String(project.customMacros?.length ?? 0)} detail="saved in project" />
-            <Stat label="Custom cards" value={String(project.customThemeCards?.length ?? 0)} detail="saved in project" />
+            <Stat label="Layouts" value={String(project.layouts.length)} detail="embedded in bundle" />
+            <Stat label="Devices" value={String(project.devices.length)} detail={project.devices.map((device) => device.kind).join(" / ")} />
+            <Stat label="Schema bindings" value={String(project.schemaBindings.length)} detail="schema_id → layout" />
             <Stat label="Toolbar" value={`${project.chrome?.toolbar.buttons.length ?? 0} buttons`} detail={project.chrome?.toolbar.backStyle ?? "—"} />
             <Stat label="Liquid" value={`${project.chrome?.liquid.tabs.length ?? 0} tabs`} detail={project.chrome?.liquid.tabs.map((tab) => tab.name).join(" / ") ?? "—"} />
             <Stat label="Raw preset keys" value={String(Object.keys(project.customPresetKeys ?? {}).length)} detail="imported command/select keys" />
+            <Stat label="Passthrough" value={String(Object.keys(project.passthrough ?? {}).length)} detail="unmodelled fields" />
           </div>
           <p className="mt-3 text-[10px] text-muted-foreground">
-            编译只输出一份完整 trime.yaml；导出在 Export 页复制或下载。
+            编译只读取这份 bundle，并输出一份完整 trime.yaml；导出在 Export 页复制或下载。
           </p>
         </section>
       </div>

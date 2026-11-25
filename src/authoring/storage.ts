@@ -1,8 +1,8 @@
-import type { ProjectDoc } from "./types";
-import { normalizeProject } from "./utils";
+import type { ProjectBundle } from "./types";
+import { normalizeBundle } from "./utils";
 
 const DB_NAME = "trime-authoring";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE = "projects";
 const SNAPSHOTS = "snapshots";
 const MAX_SNAPSHOTS = 20;
@@ -12,12 +12,12 @@ export type Snapshot = {
   projectId: string;
   label: string;
   createdAt: number;
-  project: ProjectDoc;
+  project: ProjectBundle;
 };
 
 export type SnapshotBundle = {
-  format: "trime-authoring-snapshots";
-  version: 1;
+  format: "trime-theme-snapshots";
+  version: 2;
   projectId: string;
   projectName: string;
   exportedAt: string;
@@ -27,51 +27,54 @@ export type SnapshotBundle = {
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    // v2 has no production data to preserve. Recreate the stores instead of
+    // carrying a migration path for the old document shape.
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(SNAPSHOTS)) {
-        const store = db.createObjectStore(SNAPSHOTS, { keyPath: "key" });
-        store.createIndex("projectId", "projectId", { unique: false });
+      for (const name of [STORE, SNAPSHOTS]) {
+        if (db.objectStoreNames.contains(name)) db.deleteObjectStore(name);
       }
+      db.createObjectStore(STORE, { keyPath: "id" });
+      const store = db.createObjectStore(SNAPSHOTS, { keyPath: "key" });
+      store.createIndex("projectId", "projectId", { unique: false });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-export async function listProjects(): Promise<ProjectDoc[]> {
+export async function listProjects(): Promise<ProjectBundle[]> {
   const db = await open();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
     const request = tx.objectStore(STORE).getAll();
-    request.onsuccess = () => resolve((request.result as ProjectDoc[])
-      .map(normalizeProject)
+    request.onsuccess = () => resolve((request.result as ProjectBundle[])
+      .map(normalizeBundle)
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
     request.onerror = () => reject(request.error);
     tx.oncomplete = () => db.close();
   });
 }
 
-export async function loadProject(id: string): Promise<ProjectDoc | undefined> {
+export async function loadProject(id: string): Promise<ProjectBundle | undefined> {
   const db = await open();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
     const request = tx.objectStore(STORE).get(id);
     request.onsuccess = () => {
-      const result = request.result as ProjectDoc | undefined;
-      resolve(result ? normalizeProject(result) : undefined);
+      const result = request.result as ProjectBundle | undefined;
+      resolve(result ? normalizeBundle(result) : undefined);
     };
     request.onerror = () => reject(request.error);
     tx.oncomplete = () => db.close();
   });
 }
 
-export async function saveProject(project: ProjectDoc): Promise<void> {
+export async function saveProject(project: ProjectBundle): Promise<void> {
   const db = await open();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put({ ...structuredClone(project), updatedAt: Date.now() });
+    tx.objectStore(STORE).put({ ...normalizeBundle(project), updatedAt: Date.now() });
     tx.oncomplete = () => {
       db.close();
       resolve();
@@ -105,14 +108,14 @@ export async function listSnapshots(projectId: string): Promise<Snapshot[]> {
   });
 }
 
-export async function saveSnapshot(project: ProjectDoc, label: string): Promise<Snapshot> {
+export async function saveSnapshot(project: ProjectBundle, label: string): Promise<Snapshot> {
   const createdAt = Date.now();
   const snapshot: Snapshot = {
     key: `${project.id}@${createdAt}`,
     projectId: project.id,
     label: label || "Manual snapshot",
     createdAt,
-    project: structuredClone(project),
+    project: normalizeBundle(project),
   };
   const db = await open();
   await new Promise<void>((resolve, reject) => {
@@ -183,7 +186,7 @@ export async function importSnapshots(projectId: string, snapshots: Snapshot[]):
           projectId,
           label: snapshot.label || `Imported snapshot ${index + 1}`,
           createdAt,
-          project: normalizeProject(snapshot.project),
+          project: normalizeBundle(snapshot.project),
         });
         imported += 1;
       } catch {

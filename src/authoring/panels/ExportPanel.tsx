@@ -4,16 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { compileProject } from "../compiler";
-import { diffProjects } from "../diff";
-import { BUILTIN_PRESETS } from "../presets";
+import { compileBundle } from "../compiler";
+import { diffBundles } from "../diff";
 import type { Snapshot } from "../storage";
-import type { PresetLibraries, ProjectDoc } from "../types";
-import { normalizeProject, slug } from "../utils";
+import type { ProjectBundle } from "../types";
+import { normalizeBundle, slug } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
-  libs: PresetLibraries;
+  project: ProjectBundle;
   yaml: string;
   snapshots: Snapshot[];
   setMessage: (message: string) => void;
@@ -21,26 +19,26 @@ type Props = {
 
 type Issue = { level: "error" | "warning"; message: string };
 
-export function ExportPanel({ project, libs, yaml, snapshots, setMessage }: Props) {
+export function ExportPanel({ project, yaml, snapshots, setMessage }: Props) {
   const [copied, setCopied] = useState(false);
   const [compareKey, setCompareKey] = useState("");
   const [diffView, setDiffView] = useState<"yaml" | "structured">("yaml");
   const [diffQuery, setDiffQuery] = useState("");
-  const main = libs.layouts.find((item) => item.id === project.layoutId);
-  const pageLayouts = [main, ...(project.pageIds ?? []).map((id) => libs.layouts.find((item) => item.id === id))].filter(Boolean);
-  const issues = useMemo(() => validate(project, libs), [project, libs]);
+  const main = project.layouts.find((item) => item.id === project.mainLayoutId);
+  const pageLayouts = [main, ...project.pageIds.map((id) => project.layouts.find((item) => item.id === id))].filter(Boolean);
+  const issues = useMemo(() => validate(project), [project]);
   const errors = issues.filter((issue) => issue.level === "error");
   const warnings = issues.filter((issue) => issue.level === "warning");
   const fileName = `${slug(project.meta.name)}.yaml`;
   const compareYaml = useMemo(() => {
     const snapshot = snapshots.find((item) => item.key === compareKey);
-    return snapshot ? compileProject(normalizeProject(snapshot.project), BUILTIN_PRESETS) : "";
+    return snapshot ? compileBundle(normalizeBundle(snapshot.project)) : "";
   }, [compareKey, snapshots]);
   const diff = useMemo(() => (compareYaml ? diffLines(compareYaml, yaml) : []), [compareYaml, yaml]);
   const added = diff.filter((op) => op.type === "add").length;
   const removed = diff.filter((op) => op.type === "remove").length;
   const compareSnapshot = snapshots.find((item) => item.key === compareKey);
-  const structured = useMemo(() => (compareSnapshot ? diffProjects(compareSnapshot.project, project) : []), [compareSnapshot, project]);
+  const structured = useMemo(() => (compareSnapshot ? diffBundles(compareSnapshot.project, project) : []), [compareSnapshot, project]);
   const structuredCount = structured.reduce((sum, section) => sum + section.entries.length + section.truncated, 0);
   const visibleStructured = useMemo(() => {
     const query = diffQuery.trim().toLowerCase();
@@ -87,7 +85,7 @@ export function ExportPanel({ project, libs, yaml, snapshots, setMessage }: Prop
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">Export trime.yaml</span>
         <Badge variant="muted">{pagesLabel(pageLayouts.length)}</Badge>
-        <Badge variant="muted">{project.macroIds.length} macros</Badge>
+        <Badge variant="muted">{project.macros.length} macros</Badge>
         <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
           {errors.length ? `${errors.length} errors` : warnings.length ? `${warnings.length} warnings` : "ready"}
         </Badge>
@@ -197,17 +195,17 @@ function pagesLabel(count: number): string {
   return `${count} keyboards`;
 }
 
-function validate(project: ProjectDoc, libs: PresetLibraries): Issue[] {
+function validate(project: ProjectBundle): Issue[] {
   const issues: Issue[] = [];
-  const macroIds = new Set(libs.macros.map((item) => item.id));
-  const layoutIds = new Set(libs.layouts.map((item) => item.id));
+  const macroIds = new Set(project.macros.map((item) => item.id));
+  const layoutIds = new Set(project.layouts.map((item) => item.id));
   const sanitize = (value: string) => value.replace(/[^A-Za-z0-9_]/g, "_");
   const knownPresets = new Set<string>([
     "Keyboard_main", "Keyboard_default", "liquid_keyboard_exit", "space1", "Return1",
     "liquid_keyboard_clipboard", ...Object.keys(project.customPresetKeys ?? {}),
-    ...libs.macros.map((item) => `macro_${sanitize(item.id)}`),
+    ...project.macros.map((item) => `macro_${sanitize(item.id)}`),
   ]);
-  for (const id of [project.layoutId, ...(project.pageIds ?? [])]) knownPresets.add(`Keyboard_${sanitize(id)}`);
+  for (const id of [project.mainLayoutId, ...project.pageIds]) knownPresets.add(`Keyboard_${sanitize(id)}`);
   const liquidTabs = project.chrome?.liquid.tabs ?? [];
   const tabIds = new Set<string>();
   for (const tab of liquidTabs) {
@@ -229,20 +227,17 @@ function validate(project: ProjectDoc, libs: PresetLibraries): Issue[] {
     }
   }
 
-  if (!libs.layouts.some((item) => item.id === project.layoutId)) {
-    issues.push({ level: "error", message: `主布局不存在：${project.layoutId}` });
+  if (!project.layouts.some((item) => item.id === project.mainLayoutId)) {
+    issues.push({ level: "error", message: `主布局不存在：${project.mainLayoutId}` });
   }
-  for (const id of project.pageIds ?? []) {
+  for (const id of project.pageIds) {
     if (!layoutIds.has(id)) issues.push({ level: "error", message: `页面引用的布局不存在：${id}` });
-    if (id === project.layoutId) issues.push({ level: "warning", message: `页面与主布局重复：${id}` });
-  }
-  for (const id of project.macroIds) {
-    if (!macroIds.has(id)) issues.push({ level: "error", message: `宏引用不存在：${id}` });
+    if (id === project.mainLayoutId) issues.push({ level: "warning", message: `页面与主布局重复：${id}` });
   }
 
   const pageLayouts = [
-    libs.layouts.find((item) => item.id === project.layoutId),
-    ...(project.pageIds ?? []).map((id) => libs.layouts.find((item) => item.id === id)),
+    project.layouts.find((item) => item.id === project.mainLayoutId),
+    ...project.pageIds.map((id) => project.layouts.find((item) => item.id === id)),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   for (const layout of pageLayouts) {
@@ -321,7 +316,7 @@ function diffLines(before: string, after: string): DiffOp[] {
   return output;
 }
 
-function diffMarkdown(project: ProjectDoc, snapshot: Snapshot, sections: ReturnType<typeof diffProjects>): string {
+function diffMarkdown(project: ProjectBundle, snapshot: Snapshot, sections: ReturnType<typeof diffBundles>): string {
   const lines = [
     `# ${project.meta.name} vs ${snapshot.label}`,
     "",

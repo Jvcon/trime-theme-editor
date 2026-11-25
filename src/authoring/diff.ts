@@ -1,5 +1,5 @@
-import type { ProjectDoc } from "./types";
-import { libraries, normalizeProject, pages } from "./utils";
+import type { ProjectBundle } from "./types";
+import { libraries, normalizeBundle, pages } from "./utils";
 
 export type DiffEntry = {
   kind: "added" | "removed" | "changed";
@@ -17,27 +17,27 @@ export type DiffSection = {
 
 type Shape = Record<string, unknown>;
 
-function shape(projectInput: ProjectDoc): Shape {
-  const project = normalizeProject(projectInput);
+function shape(projectInput: ProjectBundle): Shape {
+  const project = normalizeBundle(projectInput);
   const libs = libraries(project);
-  const layouts = (project.customLayouts ?? []).map((layout) => [layout.id, layout]);
-  const macros = (project.customMacros ?? []).map((macro) => [macro.id, macro]);
-  const cards = (project.customThemeCards ?? []).map((card) => [card.id, card]);
+  const layouts = project.layouts.map((layout) => [layout.id, layout]);
+  const macros = project.macros.map((macro) => [macro.id, macro]);
   const tabs = (project.chrome?.liquid.tabs ?? []).map((tab) => [tab.id, tab]);
   return {
     meta: project.meta,
-    themeCardId: project.themeCardId,
+    theme: project.theme,
     variant: project.variant,
-    layoutId: project.layoutId,
+    mainLayoutId: project.mainLayoutId,
     // Page order is meaningful, so keep pageIds as an array.
-    pageIds: project.pageIds ?? [],
-    macroIds: project.macroIds,
+    pageIds: project.pageIds,
+    devices: project.devices,
+    schemaBindings: project.schemaBindings,
     keyStyles: project.keyStyles,
-    customThemeCards: Object.fromEntries(cards),
-    customLayouts: Object.fromEntries(layouts),
-    customMacros: Object.fromEntries(macros),
+    layouts: Object.fromEntries(layouts),
+    macros: Object.fromEntries(macros),
     metrics: project.metrics ?? {},
     customPresetKeys: project.customPresetKeys ?? {},
+    passthrough: project.passthrough ?? {},
     chrome: project.chrome ? {
       toolbar: project.chrome.toolbar,
       liquid: {
@@ -49,7 +49,7 @@ function shape(projectInput: ProjectDoc): Shape {
       window: project.chrome.window,
       preedit: project.chrome.preedit,
     } : {},
-    // Effective page composition, including built-in layouts.
+    // Effective page composition, including the main layout.
     effective: {
       pages: pages(project, libs).map((layout) => layout.id),
     },
@@ -78,10 +78,11 @@ function flatten(value: unknown, prefix: string, output: Record<string, string>)
 
 const SECTIONS: Array<{ id: string; title: string; match: (path: string) => boolean }> = [
   { id: "meta", title: "Meta", match: (path) => path.startsWith("meta.") },
-  { id: "theme", title: "Theme card", match: (path) => path.startsWith("themeCardId") || path.startsWith("variant") || path.startsWith("customThemeCards") },
+  { id: "theme", title: "Theme card", match: (path) => path.startsWith("theme.") || path.startsWith("variant") },
   { id: "styles", title: "Key styles", match: (path) => path.startsWith("keyStyles") },
-  { id: "layouts", title: "Layouts", match: (path) => path.startsWith("layoutId") || path.startsWith("pageIds") || path.startsWith("customLayouts") || path.startsWith("effective.pages") },
-  { id: "macros", title: "Macros", match: (path) => path.startsWith("macroIds") || path.startsWith("customMacros") },
+  { id: "layouts", title: "Layouts", match: (path) => path.startsWith("mainLayoutId") || path.startsWith("pageIds") || path.startsWith("layouts.") || path.startsWith("effective.pages") },
+  { id: "macros", title: "Macros", match: (path) => path.startsWith("macros.") },
+  { id: "devices", title: "Devices", match: (path) => path.startsWith("devices") || path.startsWith("schemaBindings") },
   { id: "interface", title: "Interface", match: (path) => path.startsWith("chrome") },
   { id: "metrics", title: "Metrics", match: (path) => path.startsWith("metrics") },
   { id: "presets", title: "Preset keys", match: (path) => path.startsWith("customPresetKeys") },
@@ -94,17 +95,13 @@ function sectionOf(path: string): string {
 
 function humanize(path: string): string {
   return path
-    .replace(/^customLayouts/, "layouts")
-    .replace(/^customMacros/, "macros")
-    .replace(/^customThemeCards/, "cards")
-    .replace(/^customPresetKeys/, "presetKeys")
     .replace(/^chrome\./, "interface.")
     .replace(/^effective\./, "");
 }
 
 const DISPLAY_LIMIT = 250;
 
-export function diffProjects(beforeInput: ProjectDoc, afterInput: ProjectDoc): DiffSection[] {
+export function diffBundles(beforeInput: ProjectBundle, afterInput: ProjectBundle): DiffSection[] {
   const before: Record<string, string> = {};
   const after: Record<string, string> = {};
   flatten(shape(beforeInput), "", before);
@@ -125,12 +122,12 @@ export function diffProjects(beforeInput: ProjectDoc, afterInput: ProjectDoc): D
     });
   }
 
-  // Collapse added/removed layouts, macros, cards, and liquid tabs into one row
+  // Collapse added/removed layouts, macros, and liquid tabs into one row
   // instead of emitting every nested field.
   const collapsed = new Map<string, DiffEntry["kind"]>();
   for (const entry of rawEntries) {
     if (entry.kind === "changed") continue;
-    const match = /^(customLayouts|customMacros|customThemeCards|chrome\.liquid\.tabs)\.[^.]+\.id$/.exec(entry.path);
+    const match = /^(layouts|macros|chrome\.liquid\.tabs)\.[^.]+\.id$/.exec(entry.path);
     if (!match) continue;
     collapsed.set(entry.path.slice(0, -3), entry.kind);
   }

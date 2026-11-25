@@ -8,13 +8,13 @@ import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEFAULT_TOOLBAR_ACTIONS, DEFAULT_TOOLBAR_ICONS } from "../presets";
 import { LiquidPreview, PreeditPreview, ToolbarPreview, WindowPreview } from "../components/InterfacePreviews";
-import type { ChromeConfig, LiquidTab, PresetLibraries, ProjectDoc, ToolbarButton } from "../types";
+import type { ChromeConfig, LiquidTab, PresetLibraries, ProjectBundle, ToolbarButton } from "../types";
 import { defaultChrome, normalizeChrome } from "../utils";
 
 type Props = {
-  project: ProjectDoc;
+  project: ProjectBundle;
   libs: PresetLibraries;
-  mutate: (fn: (draft: ProjectDoc) => void) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
   setMessage: (message: string) => void;
 };
 

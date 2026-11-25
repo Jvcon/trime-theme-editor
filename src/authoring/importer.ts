@@ -1,14 +1,14 @@
 import YAML from "yaml";
-import { defaultProject } from "./compiler";
+import { defaultBundle } from "./compiler";
 import { KEYCODES } from "./catalogs";
 import { BUILTIN_PRESETS } from "./presets";
-import type { ActionRef, ChromePatch, KeySlot, LayoutPreset, LayoutRow, LiquidConfig, LiquidTab, MacroPreset, MacroStep, PreeditConfig, ProjectDoc, ThemeCardPreset, ToolbarButton, ToolbarConfig, Variant, WindowConfig } from "./types";
-import { defaultKeyStyles, fitLayoutRows, normalizeChrome } from "./utils";
+import type { ActionRef, ChromePatch, KeySlot, LayoutPreset, LayoutRow, LiquidConfig, LiquidTab, MacroPreset, MacroStep, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, ToolbarConfig, Variant, WindowConfig } from "./types";
+import { defaultKeyStyles, fitLayoutRows, normalizeChrome, slug } from "./utils";
 
 type Dict = Record<string, unknown>;
 
 export type ImportResult = {
-  project: ProjectDoc;
+  project: ProjectBundle;
   warnings: string[];
 };
 
@@ -90,7 +90,7 @@ function buildCard(doc: Dict, warnings: string[]): ThemeCardPreset | undefined {
   const darkName = names.includes("dark") ? "dark" : names.find((name) => name !== lightName) ?? lightName;
   return {
     kind: "theme-card",
-    id: `imported-card-${Date.now()}`,
+    id: `imported-card-${slug(text(doc.name) || "theme")}`,
     name: `${text(doc.name) || "Imported"} card`,
     version: 1,
     builtin: false,
@@ -412,8 +412,8 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
     ?? resolveKeyboard(presetKeyboards, Object.keys(presetKeyboards)[0] ?? "");
   if (!mainCandidate) {
     warnings.push("没有可用 preset_keyboards，导入为空项目。");
-    const empty = defaultProject();
-    empty.id = `imported-${Date.now()}`;
+    const empty = defaultBundle();
+    empty.id = `imported-${slug(fileName.replace(/\.ya?ml$/i, ""))}`;
     empty.meta.name = text(doc.name) || fileName.replace(/\.ya?ml$/i, "");
     empty.meta.author = text(doc.author) || empty.meta.author;
     return { project: empty, warnings };
@@ -474,24 +474,22 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
     warnings.push(`仅导入主键盘；${layouts.length - 1} 个页面布局未导入，页面跳转引用可能悬空。`);
   }
   const pageIds = importedLayouts.filter((item) => item.id !== mainLayout.id).map((item) => item.id);
-  const project = defaultProject();
-  project.id = `imported-${Date.now()}`;
+  const project = defaultBundle();
+  project.id = `imported-${slug(fileName.replace(/\.ya?ml$/i, ""))}`;
   project.meta = {
     name: text(doc.name) || fileName.replace(/\.ya?ml$/i, ""),
     author: text(doc.author) || "imported trime.yaml",
     description: `Imported from ${fileName}`,
     configVersion: text(doc.config_version) || "3.0",
   };
-  project.layoutId = mainLayout.id;
+  project.mainLayoutId = mainLayout.id;
   project.pageIds = pageIds;
-  project.customLayouts = importedLayouts;
-  project.customMacros = macros;
+  project.layouts = importedLayouts;
+  project.macros = macros;
   project.customPresetKeys = rawPresetKeys;
-  project.macroIds = macros.map((item) => item.id);
   project.keyStyles = defaultKeyStyles();
   if (card) {
-    project.customThemeCards = [card];
-    project.themeCardId = card.id;
+    project.theme = card;
     const hasDark = Object.prototype.hasOwnProperty.call(asDict(doc.preset_color_schemes), "dark");
     project.variant = hasDark ? "dark" : "light";
   }
@@ -515,7 +513,7 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
     popupTextSize: number(style.popup_text_size),
     popupBottomMargin: number(style.popup_bottom_margin),
   };
-  for (const key of Object.keys(project.metrics) as Array<keyof NonNullable<ProjectDoc["metrics"]>>) {
+  for (const key of Object.keys(project.metrics) as Array<keyof NonNullable<ProjectBundle["metrics"]>>) {
     if (project.metrics[key] === undefined) delete project.metrics[key];
   }
 

@@ -80,30 +80,32 @@ export type LayoutPreset = {
   rows: LayoutRow[];
 };
 
-export type ProjectDoc = {
-  version: 1;
+export type ProjectMeta = {
+  name: string;
+  author: string;
+  description?: string;
+  configVersion: string;
+};
+
+export type DeviceKind = "phone" | "fold" | "tablet";
+export type Orientation = "portrait" | "landscape";
+export type FoldState = "folded" | "unfolded";
+
+export type DeviceProfile = {
   id: string;
-  updatedAt?: number;
-  meta: {
-    name: string;
-    author: string;
-    description?: string;
-    configVersion: string;
-  };
-  themeCardId: string;
-  variant: Variant;
+  kind: DeviceKind;
+  orientation: Orientation;
+  foldState?: FoldState;
+  /** Per-device overrides. Phase 1 only stores them; compilation uses the shared values. */
+  metrics?: Partial<ProjectMetrics>;
+  mainLayoutId?: string;
+};
+
+export type SchemaBinding = {
+  schemaId: string;
   layoutId: string;
-  /** Layout ids composed as switchable pages, besides the main layout. */
-  pageIds?: string[];
-  macroIds: string[];
-  keyStyles: Record<string, KeyStyle>;
-  metrics?: ProjectMetrics;
-  chrome?: ChromeConfig;
-  /** Imported preset_keys that cannot be represented as a macro (commands/selects). */
-  customPresetKeys?: Record<string, Record<string, unknown>>;
-  customLayouts?: LayoutPreset[];
-  customMacros?: MacroPreset[];
-  customThemeCards?: ThemeCardPreset[];
+  /** Output keyboard alias. Defaults to the layout id when omitted. */
+  alias?: string;
 };
 
 export type ProjectMetrics = {
@@ -210,7 +212,39 @@ export type ChromePatch = {
   preedit?: Partial<PreeditConfig>;
 };
 
+/**
+ * Version 2 project document. This is both the editor document and the
+ * exported bundle: it embeds the theme card, layouts, and macros that the
+ * project actually uses instead of referencing a built-in library.
+ */
+export type ProjectBundle = {
+  format: "trime-theme-bundle";
+  schemaVersion: 2;
+  id: string;
+  /** Storage-only timestamp. Stripped from exported bundles. */
+  updatedAt?: number;
+  meta: ProjectMeta;
+  devices: DeviceProfile[];
+  schemaBindings: SchemaBinding[];
+  mainLayoutId: string;
+  /** Layout ids composed as switchable pages, besides the main layout. */
+  pageIds: string[];
+  theme: ThemeCardPreset;
+  variant: Variant;
+  keyStyles: Record<string, KeyStyle>;
+  /** Embedded main layout plus every page referenced by pageIds. */
+  layouts: LayoutPreset[];
+  /** Embedded macros selected for this project. */
+  macros: MacroPreset[];
+  metrics?: ProjectMetrics;
+  chrome?: ChromeConfig;
+  /** Imported preset_keys that cannot be represented as a macro (commands/selects). */
+  customPresetKeys?: Record<string, Record<string, unknown>>;
+  /** Unmodelled Trime fields preserved verbatim. */
+  passthrough?: Record<string, unknown>;
+};
 
+/** Catalog used only for pickers. It is never exported and never compiled. */
 export type PresetLibraries = {
   themeCards: ThemeCardPreset[];
   layouts: LayoutPreset[];

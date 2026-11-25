@@ -1,0 +1,998 @@
+author: trime-theme-editor
+config_version: "3.0"
+fallback_colors:
+  border_color: back_color
+  candidate_text_color: text_color
+  comment_text_color: candidate_text_color
+  key_back_color: back_color
+  key_border_color: border_color
+  key_symbol_color: comment_text_color
+  key_text_color: candidate_text_color
+liquid_keyboard:
+  emoji:
+    keys:
+      - 😀
+      - 😃
+      - 😄
+      - 😁
+      - 😆
+      - 😅
+      - 🤣
+      - 😂
+      - 🙂
+      - 🙃
+      - 😉
+      - 😊
+      - 😇
+      - 🥰
+      - 😍
+      - 🤩
+      - 😘
+      - 😗
+      - 😚
+      - 😙
+      - 😋
+      - 😛
+      - 😜
+      - 🤪
+      - 😝
+      - 🤑
+      - 🤗
+      - 🤭
+      - 🤔
+      - 🤐
+      - 😐
+      - 😑
+      - 😶
+      - 😏
+      - 😒
+      - 🙄
+      - 😬
+      - 😌
+      - 😔
+      - 😪
+      - 😴
+      - 😷
+      - 🤒
+      - 🤕
+      - 🤢
+      - 🤮
+      - 🤧
+      - 🥵
+      - 🥶
+      - 🥴
+      - 😵
+      - 🤯
+      - 🤠
+      - 🥳
+      - 😎
+      - 🤓
+      - 🧐
+      - 😕
+      - 😟
+      - 🙁
+      - ☹
+      - 😮
+      - 😯
+      - 😲
+      - 😳
+      - 🥺
+      - 😦
+      - 😧
+      - 😨
+      - 😰
+      - 😥
+      - 😢
+      - 😭
+      - 😱
+      - 😖
+      - 😣
+      - 😞
+      - 😓
+      - 😩
+      - 😫
+      - 🥱
+      - 😤
+      - 😡
+      - 😠
+      - 🤬
+      - 😈
+      - 👿
+      - 💀
+      - 💩
+      - 🤡
+      - 👹
+      - 👺
+      - 👻
+      - 👽
+      - 👾
+      - 🤖
+      - 😺
+      - 😸
+      - 😹
+      - 😻
+      - 😼
+      - 😽
+      - 🙀
+      - 😿
+      - 😾
+    name: 表情
+    type: SINGLE
+  fixed_key_bar:
+    keys:
+      - liquid_keyboard_exit
+      - space1
+      - BackSpace
+      - Return1
+    position: right
+  history:
+    name: 历史
+    type: HISTORY
+  kaomoji:
+    keys:
+      - ^_^
+      - ^ω^
+      - ^o^
+      - T_T
+      - QwQ
+      - ">_<"
+      - =w=
+      - (^_^)
+      - (￣▽￣)
+      - (´▽｀)
+      - (・ω・)
+      - (｡･ω･｡)
+      - (╯°□°）╯
+      - (ノ°Д°)ノ
+      - (づ｡◕‿‿◕｡)づ
+      - (๑•̀ㅂ•́)و✧
+    name: 颜文字
+    type: SINGLE
+  key_height: 40
+  keyboards:
+    - emoji
+    - kaomoji
+    - history
+    - symbols
+  margin_x: 3
+  row: 6
+  single_width: 60
+  symbols:
+    keys:
+      - ，
+      - 。
+      - ？
+      - ！
+      - ：
+      - ；
+      - 、
+      - …
+      - —
+      - “
+      - ”
+      - ‘
+      - ’
+      - （
+      - ）
+      - 【
+      - 】
+      - 《
+      - 》
+      - 〈
+      - 〉
+      - 「
+      - 」
+      - 『
+      - 』
+      - 〔
+      - 〕
+      - ·
+      - ～
+      - ￥
+      - $
+      - €
+      - £
+      - ©
+      - ®
+      - ™
+      - °
+      - ′
+      - ″
+      - ≈
+      - ≠
+      - ≤
+      - ≥
+      - ±
+      - ×
+      - ÷
+      - √
+      - ∞
+      - ∠
+      - ⊥
+      - ∥
+      - ∈
+      - ∉
+      - ⊂
+      - ⊃
+      - ∪
+      - ∩
+      - ○
+      - ●
+      - ◇
+      - ◆
+      - □
+      - ■
+      - △
+      - ▲
+      - ▽
+      - ▼
+      - ☆
+      - ★
+      - ♠
+      - ♥
+      - ♦
+      - ♣
+      - ♪
+      - ♫
+      - ¶
+      - §
+      - →
+      - ←
+      - ↑
+      - ↓
+    name: 符号
+    type: SINGLE
+  vertical_gap: 1
+name: My Trime Theme
+preedit:
+  alpha: 1
+  foreground:
+    font_size: 18
+  horizontal_padding: 10
+  top_end_radius: 12
+  top_start_radius: 12
+preset_color_schemes:
+  dark:
+    author: trime-theme-editor
+    back_color: "0xFF282A36"
+    border_color: "0xFF6272A4"
+    candidate_background: "0xFF44475A"
+    candidate_text_color: "0xFFF8F8F2"
+    comment_text_color: "0xFFB8B8C8"
+    enter_back_color: "0xFFBD93F9"
+    enter_border_color: "0xFFBD93F9"
+    enter_symbol_color: "0xFF282A36"
+    enter_text_color: "0xFF282A36"
+    hilited_enter_back_color: "0xFFFF79C6"
+    hilited_enter_border_color: "0xFFBD93F9"
+    hilited_enter_symbol_color: "0xFF282A36"
+    hilited_enter_text_color: "0xFF282A36"
+    hilited_key_back_color: "0xFFBD93F9"
+    hilited_key_border_color: "0xFFBD93F9"
+    hilited_key_symbol_color: "0xFF282A36"
+    hilited_key_text_color: "0xFF282A36"
+    hilited_modifier_back_color: "0xFFBD93F9"
+    hilited_modifier_border_color: "0xFF6272A4"
+    hilited_modifier_symbol_color: "0xFFB8B8C8"
+    hilited_modifier_text_color: "0xFF282A36"
+    hilited_off_key_back_color: "0xFFBD93F9"
+    hilited_off_key_border_color: "0xFF6272A4"
+    hilited_off_key_symbol_color: "0xFFB8B8C8"
+    hilited_off_key_text_color: "0xFF282A36"
+    hilited_space_back_color: "0xFFBD93F9"
+    hilited_space_border_color: "0xFF6272A4"
+    hilited_space_symbol_color: "0xFFB8B8C8"
+    hilited_space_text_color: "0xFF282A36"
+    key_back_color: "0xFF44475A"
+    key_border_color: "0xFF6272A4"
+    key_symbol_color: "0xFFB8B8C8"
+    key_text_color: "0xFFF8F8F2"
+    keyboard_background: "0xFF44475A"
+    label_color: "0xFFB8B8C8"
+    light_scheme: light
+    liquid_keyboard_background: "0xFF44475A"
+    long_text_back_color: "0xFF44475A"
+    long_text_color: "0xFFF8F8F2"
+    modifier_back_color: "0xFF343746"
+    modifier_border_color: "0xFF6272A4"
+    modifier_symbol_color: "0xFFB8B8C8"
+    modifier_text_color: "0xFFB8B8C8"
+    name: Dracula dark
+    off_key_back_color: "0xFF343746"
+    off_key_border_color: "0xFF6272A4"
+    off_key_symbol_color: "0xFFB8B8C8"
+    off_key_text_color: "0xFFB8B8C8"
+    popup_back_color: "0xFF44475A"
+    popup_border_color: "0xFF6272A4"
+    popup_text_color: "0xFFF8F8F2"
+    preview_back_color: "0xFF44475A"
+    preview_text_color: "0xFFF8F8F2"
+    root_background: "0xFF282A36"
+    shadow_color: "0x33000000"
+    space_back_color: "0xFF44475A"
+    space_border_color: "0xFF6272A4"
+    space_symbol_color: "0xFFB8B8C8"
+    space_text_color: "0xFFB8B8C8"
+    text_color: "0xFFF8F8F2"
+  light:
+    author: trime-theme-editor
+    back_color: "0xFFF8F8F2"
+    border_color: "0xFFD7D7E0"
+    candidate_background: "0xFFFFFFFF"
+    candidate_text_color: "0xFF282A36"
+    comment_text_color: "0xFF6272A4"
+    enter_back_color: "0xFF7C3AED"
+    enter_border_color: "0xFF7C3AED"
+    enter_symbol_color: "0xFFFFFFFF"
+    enter_text_color: "0xFFFFFFFF"
+    hilited_enter_back_color: "0xFFD63384"
+    hilited_enter_border_color: "0xFF7C3AED"
+    hilited_enter_symbol_color: "0xFFFFFFFF"
+    hilited_enter_text_color: "0xFFFFFFFF"
+    hilited_key_back_color: "0xFF7C3AED"
+    hilited_key_border_color: "0xFF7C3AED"
+    hilited_key_symbol_color: "0xFFFFFFFF"
+    hilited_key_text_color: "0xFFFFFFFF"
+    hilited_modifier_back_color: "0xFF7C3AED"
+    hilited_modifier_border_color: "0xFFD7D7E0"
+    hilited_modifier_symbol_color: "0xFF6272A4"
+    hilited_modifier_text_color: "0xFFFFFFFF"
+    hilited_off_key_back_color: "0xFF7C3AED"
+    hilited_off_key_border_color: "0xFFD7D7E0"
+    hilited_off_key_symbol_color: "0xFF6272A4"
+    hilited_off_key_text_color: "0xFFFFFFFF"
+    hilited_space_back_color: "0xFF7C3AED"
+    hilited_space_border_color: "0xFFD7D7E0"
+    hilited_space_symbol_color: "0xFF6272A4"
+    hilited_space_text_color: "0xFFFFFFFF"
+    key_back_color: "0xFFFFFFFF"
+    key_border_color: "0xFFD7D7E0"
+    key_symbol_color: "0xFF6272A4"
+    key_text_color: "0xFF282A36"
+    keyboard_background: "0xFFFFFFFF"
+    label_color: "0xFF6272A4"
+    liquid_keyboard_background: "0xFFFFFFFF"
+    long_text_back_color: "0xFFFFFFFF"
+    long_text_color: "0xFF282A36"
+    modifier_back_color: "0xFFF1F1F1"
+    modifier_border_color: "0xFFD7D7E0"
+    modifier_symbol_color: "0xFF6272A4"
+    modifier_text_color: "0xFF6272A4"
+    name: Dracula light
+    off_key_back_color: "0xFFF1F1F1"
+    off_key_border_color: "0xFFD7D7E0"
+    off_key_symbol_color: "0xFF6272A4"
+    off_key_text_color: "0xFF6272A4"
+    popup_back_color: "0xFFFFFFFF"
+    popup_border_color: "0xFFD7D7E0"
+    popup_text_color: "0xFF282A36"
+    preview_back_color: "0xFFFFFFFF"
+    preview_text_color: "0xFF282A36"
+    root_background: "0xFFF8F8F2"
+    shadow_color: "0x33000000"
+    space_back_color: "0xFFFFFFFF"
+    space_border_color: "0xFFD7D7E0"
+    space_symbol_color: "0xFF6272A4"
+    space_text_color: "0xFF6272A4"
+    text_color: "0xFF282A36"
+preset_keyboards:
+  default:
+    import_preset: qwerty26
+  number:
+    ascii_mode: 0
+    height: 48
+    keys:
+      - click: Keyboard_main
+        height: 48
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ABC
+        width: 8.333
+      - click: "1"
+        label: "1"
+        width: 8.333
+      - click: "2"
+        label: "2"
+        width: 8.333
+      - click: "3"
+        label: "3"
+        width: 8.333
+      - click: "4"
+        label: "4"
+        width: 8.333
+      - click: "5"
+        label: "5"
+        width: 8.333
+      - click: "6"
+        label: "6"
+        width: 8.333
+      - click: "7"
+        label: "7"
+        width: 8.333
+      - click: "8"
+        label: "8"
+        width: 8.333
+      - click: "9"
+        label: "9"
+        width: 8.333
+      - click: "0"
+        label: "0"
+        width: 8.333
+      - click: BackSpace
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ⌫
+        width: 8.333
+      - click: "-"
+        height: 48
+        label: "-"
+        width: 8.333
+      - click: /
+        label: /
+        width: 8.333
+      - click: ":"
+        label: ":"
+        width: 8.333
+      - click: ;
+        label: ;
+        width: 8.333
+      - click: (
+        label: (
+        width: 8.333
+      - click: )
+        label: )
+        width: 8.333
+      - click: $
+        label: $
+        width: 8.333
+      - click: "&"
+        label: "&"
+        width: 8.333
+      - click: "@"
+        label: "@"
+        width: 8.333
+      - click: '"'
+        label: '"'
+        width: 8.333
+      - click: .
+        label: .
+        width: 8.333
+      - click: ","
+        label: ","
+        width: 8.333
+      - click: Keyboard_symbols
+        height: 48
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: 符号
+        width: 33.333
+      - click: space
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF44475A"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ""
+        width: 33.333
+      - click: Return
+        hilited_key_back_color: "0xFFFF79C6"
+        hilited_key_border_color: "0xFFBD93F9"
+        hilited_key_symbol_color: "0xFF282A36"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFFBD93F9"
+        key_border_color: "0xFFBD93F9"
+        key_symbol_color: "0xFF282A36"
+        key_text_color: "0xFF282A36"
+        label: Enter
+        width: 33.333
+    name: 数字
+  qwerty26:
+    ascii_mode: 0
+    height: 52
+    keys:
+      - click: q
+        height: 52
+        label: Q
+        width: 10
+      - click: w
+        label: W
+        width: 10
+      - click: e
+        label: E
+        width: 10
+      - click: r
+        label: R
+        width: 10
+      - click: t
+        label: T
+        width: 10
+      - click: y
+        label: Y
+        width: 10
+      - click: u
+        label: U
+        width: 10
+      - click: i
+        label: I
+        width: 10
+      - click: o
+        label: O
+        label_symbol: ()
+        long_click: macro_pair_paren
+        width: 10
+      - click: p
+        label: P
+        width: 10
+      - width: 5
+      - click: a
+        label: A
+        width: 10
+      - click: s
+        label: S
+        width: 10
+      - click: d
+        label: D
+        width: 10
+      - click: f
+        label: F
+        width: 10
+      - click: g
+        label: G
+        width: 10
+      - click: h
+        label: H
+        label_symbol: "[]"
+        long_click: macro_pair_bracket
+        width: 10
+      - click: j
+        label: J
+        label_symbol: "{}"
+        long_click: macro_pair_brace
+        width: 10
+      - click: k
+        label: K
+        width: 10
+      - click: l
+        label: L
+        width: 10
+      - width: 5
+      - click: Shift_L
+        height: 52
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: Shift
+        width: 15
+      - click: z
+        label: Z
+        width: 10
+      - click: x
+        label: X
+        width: 10
+      - click: c
+        label: C
+        width: 10
+      - click: v
+        label: V
+        width: 10
+      - click: b
+        label: B
+        width: 10
+      - click: n
+        label: N
+        width: 10
+      - click: m
+        label: M
+        width: 10
+      - click: BackSpace
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ⌫
+        width: 15
+      - click: Mode_switch
+        height: 52
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: 中/英
+        width: 15
+      - click: Keyboard_symbols
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: 符号
+        width: 10
+      - click: ，
+        label: ，
+        long_click: 、
+        popup:
+          - ，
+          - 、
+          - ；
+          - ：
+        width: 10
+      - click: space
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF44475A"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ""
+        width: 30
+      - click: 。
+        label: 。
+        long_click: ？
+        popup:
+          - 。
+          - ！
+          - ？
+          - …
+        width: 10
+      - click: /
+        label: /
+        width: 10
+      - click: Return
+        hilited_key_back_color: "0xFFFF79C6"
+        hilited_key_border_color: "0xFFBD93F9"
+        hilited_key_symbol_color: "0xFF282A36"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFFBD93F9"
+        key_border_color: "0xFFBD93F9"
+        key_symbol_color: "0xFF282A36"
+        key_text_color: "0xFF282A36"
+        label: Enter
+        width: 15
+    name: 26 键
+  symbols:
+    ascii_mode: 0
+    height: 48
+    keys:
+      - click: Keyboard_main
+        height: 48
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ABC
+        width: 15
+      - click: ，
+        label: ，
+        width: 5.6
+      - click: 。
+        label: 。
+        width: 5.6
+      - click: ？
+        label: ？
+        width: 5.6
+      - click: ！
+        label: ！
+        width: 5.6
+      - click: ：
+        label: ：
+        width: 5.6
+      - click: ；
+        label: ；
+        width: 5.6
+      - click: 、
+        label: 、
+        width: 5.6
+      - click: …
+        label: …
+        width: 5.6
+      - click: —
+        label: —
+        width: 5.6
+      - click: “
+        label: “
+        width: 5.6
+      - click: ”
+        label: ”
+        width: 5.6
+      - click: ‘
+        label: ‘
+        width: 5.6
+      - click: ’
+        label: ’
+        width: 5.6
+      - click: （
+        label: （
+        width: 5.6
+      - click: ）
+        label: ）
+        width: 5.6
+      - click: 【
+        height: 48
+        label: 【
+        width: 6.667
+      - click: 】
+        label: 】
+        width: 6.667
+      - click: 《
+        label: 《
+        width: 6.667
+      - click: 》
+        label: 》
+        width: 6.667
+      - click: 〈
+        label: 〈
+        width: 6.667
+      - click: 〉
+        label: 〉
+        width: 6.667
+      - click: 「
+        label: 「
+        width: 6.667
+      - click: 」
+        label: 」
+        width: 6.667
+      - click: 『
+        label: 『
+        width: 6.667
+      - click: 』
+        label: 』
+        width: 6.667
+      - click: 〔
+        label: 〔
+        width: 6.667
+      - click: 〕
+        label: 〕
+        width: 6.667
+      - click: ·
+        label: ·
+        width: 6.667
+      - click: ～
+        label: ～
+        width: 6.667
+      - click: ￥
+        label: ￥
+        width: 6.667
+      - click: Keyboard_number
+        height: 48
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF343746"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: "123"
+        width: 20
+      - click: space
+        hilited_key_back_color: "0xFFBD93F9"
+        hilited_key_border_color: "0xFF6272A4"
+        hilited_key_symbol_color: "0xFFB8B8C8"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFF44475A"
+        key_border_color: "0xFF6272A4"
+        key_symbol_color: "0xFFB8B8C8"
+        key_text_color: "0xFFB8B8C8"
+        label: ""
+        width: 40
+      - click: Return
+        hilited_key_back_color: "0xFFFF79C6"
+        hilited_key_border_color: "0xFFBD93F9"
+        hilited_key_symbol_color: "0xFF282A36"
+        hilited_key_text_color: "0xFF282A36"
+        key_back_color: "0xFFBD93F9"
+        key_border_color: "0xFFBD93F9"
+        key_symbol_color: "0xFF282A36"
+        key_text_color: "0xFF282A36"
+        label: Enter
+        width: 40
+    name: 符号
+preset_keys:
+  Keyboard_default:
+    label: 返回
+    select: .default
+    send: Eisu_toggle
+  Keyboard_main:
+    label: ABC
+    select: qwerty26
+    send: Eisu_toggle
+  Keyboard_number:
+    label: 数字
+    select: number
+    send: Eisu_toggle
+  Keyboard_qwerty26:
+    label: 26 键
+    select: qwerty26
+    send: Eisu_toggle
+  Keyboard_symbols:
+    label: 符号
+    select: symbols
+    send: Eisu_toggle
+  Return1:
+    label: 回车
+    send: Return
+  liquid_keyboard_clipboard:
+    command: liquid_keyboard
+    label: 剪贴
+    option: clipboard
+    send: FUNCTION
+  liquid_keyboard_emoji:
+    command: liquid_keyboard
+    label: 表情
+    option: emoji
+    send: FUNCTION
+  liquid_keyboard_exit:
+    command: liquid_keyboard
+    label: 返回
+    option: "-1"
+    send: FUNCTION
+  liquid_keyboard_history:
+    command: liquid_keyboard
+    label: 历史
+    option: history
+    send: FUNCTION
+  liquid_keyboard_kaomoji:
+    command: liquid_keyboard
+    label: 颜文字
+    option: kaomoji
+    send: FUNCTION
+  liquid_keyboard_symbols:
+    command: liquid_keyboard
+    label: 符号
+    option: symbols
+    send: FUNCTION
+  macro_copy:
+    text: "{Control+c}"
+  macro_cut:
+    text: "{Control+x}"
+  macro_pair_brace:
+    text: "{}{Left}"
+  macro_pair_bracket:
+    text: "[]{Left}"
+  macro_pair_paren:
+    text: (){Left}
+  macro_paste:
+    text: "{Control+v}"
+  macro_select_all:
+    text: "{Control+a}"
+  space1:
+    functional: false
+    label: 空格
+    repeatable: false
+    send: space
+style:
+  candidate_text_size: 18
+  candidate_view_height: 44
+  comment_text_size: 12
+  horizontal_gap: 2
+  key_height: 52
+  key_long_text_size: 14
+  key_text_size: 22
+  key_width: 10
+  keyboard_height: 270
+  keyboards:
+    - qwerty26
+    - number
+    - symbols
+    - default
+  popup_bottom_margin: 8
+  popup_height: 56
+  popup_key_height: 48
+  popup_text_size: 22
+  popup_width: 44
+  vertical_gap: 3
+tool_bar:
+  back_style: ic@arrow-left
+  button_spacing: 6
+  buttons:
+    - action: liquid_keyboard_emoji
+      foreground:
+        style: ic@emoticon
+      size:
+        - 44
+        - 44
+    - action: liquid_keyboard_kaomoji
+      foreground:
+        style: ic@emoticon
+      size:
+        - 44
+        - 44
+    - action: liquid_keyboard_clipboard
+      foreground:
+        style: ic@clipboard
+      size:
+        - 44
+        - 44
+    - action: VOICE_ASSIST
+      foreground:
+        style: ic@microphone
+      size:
+        - 44
+        - 44
+    - action: Mode_switch
+      foreground:
+        style: ic@ascii
+      size:
+        - 44
+        - 44
+    - action: Hide
+      foreground:
+        style: ic@keyboard_close
+      size:
+        - 44
+        - 44
+  primary_button:
+    action: menu_keyboard
+    background:
+      highlight: hilited_candidate_back_color
+      horizontal_inset: 4
+      normal: "0x00000000"
+      type: circle
+      vertical_inset: 4
+    foreground:
+      normal: candidate_text_color
+      padding: 10
+      style: ic@dots_horizontal
+    long_press_action: Settings
+    size:
+      - 44
+      - 44
+window:
+  alpha: 1
+  border: 0
+  corner_radius: 8
+  foreground:
+    comment_font_size: 14
+    label_font_size: 18
+    text_font_size: 20
+  insets:
+    horizontal: 8
+    vertical: 4
+  item_padding:
+    horizontal: 8
+    vertical: 4
+  min_width: 0
+  shadow: 4

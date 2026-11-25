@@ -25,7 +25,7 @@ Basic / Layouts / Themes / Interface / Macros / Export
 - 主题 meta：名称、作者、描述、config version
 - 选择主题色卡、light/dark variant、主布局
 - 项目列表：IndexedDB 保存 / 打开 / 删除
-- 项目 JSON 导入 / 导出
+- v2 bundle 导入 / 导出（只含实际使用的色卡、布局、宏）
 - 导入现有 `trime.yaml`（含 `base:` 包装的 `rime/trime.base.yaml`）
 - 快照：命名创建、保存前自动快照、恢复、删除、JSON/YAML 导出、快照包导入导出
 - 组合摘要
@@ -149,10 +149,16 @@ Cloudflare Dashboard 的 Worker 设置中配置 Custom Domain。
 ThemeCardPreset   色卡 token + 状态
 LayoutPreset      行、键、行为引用、style type、popup
 MacroPreset       text + keycode 序列
-ProjectDoc        meta + 色卡 + key styles + layouts/pages + macros + chrome
+ProjectBundle v2  meta + 内嵌色卡 + layouts/pages + macros + key styles
+                  + chrome + devices + schemaBindings + customPresetKeys
+                  + passthrough
 ```
 
-编译器把项目展开为：
+`ProjectBundle` 就是导出格式，也是编译输入。它只保存项目实际使用的色卡、
+主布局、页面布局和宏，不携带完整的 built-in preset 库。编译只读 bundle，
+不会回退到内置目录。内置 preset 只作为选择器目录存在。
+
+编译器把 bundle 展开为：
 
 ```yaml
 config_version
@@ -172,7 +178,7 @@ liquid_keyboard
 ## 存储与隐私
 
 - 项目草稿与快照存 IndexedDB
-- 项目 JSON 可导入/导出
+- v2 bundle 可导入/导出，可直接入库、diff、复现
 - 快照包为独立 JSON，可跨浏览器迁移
 - 所有操作都在本地浏览器完成，不写盘、不上传
 
@@ -181,16 +187,19 @@ liquid_keyboard
 ```text
 .
 ├── .github/workflows/
-│   ├── ci.yml                 # typecheck + build
+│   ├── ci.yml                 # typecheck + test + build
 │   └── deploy.yml             # 构建并部署到 Cloudflare Workers
+├── fixtures/golden/           # 编译产物 golden 文件
 ├── public/
 │   ├── _headers               # 静态资源缓存与安全响应头
 │   └── favicon.svg
 ├── src/authoring/             # 编辑器主体：模型、编译器、面板
 ├── src/components/ui/         # shadcn/ui 基础组件
+├── tests/                     # vitest 确定性 / golden 测试
 ├── index.html
 ├── package.json
 ├── vite.config.ts
+├── vitest.config.ts
 └── wrangler.jsonc             # Workers 静态资源配置
 ```
 
@@ -212,6 +221,7 @@ liquid_keyboard
 
 A self-contained authoring tool for [Trime](https://github.com/osfans/trime)
 themes. Compose typed presets (color cards, keyboard layouts, macros) and
-compile them into a single `trime.yaml`. Everything runs in the browser;
-projects are stored in IndexedDB. Deploy as static assets on Cloudflare
+compile them into a single `trime.yaml`. Projects are stored as self-contained
+v2 bundles (only the presets actually used) and can be exported/imported as
+JSON. Everything runs in the browser; deploy as static assets on Cloudflare
 Workers with `npm run deploy`.
