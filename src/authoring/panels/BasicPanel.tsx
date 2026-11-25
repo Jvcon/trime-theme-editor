@@ -167,7 +167,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
             <Stat label="Raw preset keys" value={String(Object.keys(project.customPresetKeys ?? {}).length)} detail="imported command/select keys" />
           </div>
           <p className="mt-3 text-[10px] text-muted-foreground">
-            编译只输出一份完整 trime.yaml；不读取、不写入 rime/ 仓库。导出在 Export 页复制或下载。
+            编译只输出一份完整 trime.yaml；导出在 Export 页复制或下载。
           </p>
         </section>
       </div>

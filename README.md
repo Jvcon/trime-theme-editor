@@ -8,14 +8,12 @@
 [![license](https://img.shields.io/github/license/Jvcon/trime-theme-editor)](./LICENSE)
 
 - 在线使用：`https://trime-theme-editor.<your-subdomain>.workers.dev`（部署后替换）
-- 主配置仓库：[Jvcon/rime-enhanced-config](https://github.com/Jvcon/rime-enhanced-config)
 - 问题反馈：[Issues](https://github.com/Jvcon/trime-theme-editor/issues)
 
 > 这是开发工具，不进入 Rime 安装包，也不替代 Android 真机测试。
 
 ## 特性
 
-编辑器不读取、不写入任何 `rime/` 目录，也不依赖 Python 或仓库外的主题脚本。
 所有项目草稿与快照都保存在浏览器 IndexedDB 中，不经过服务器。
 
 ```text
