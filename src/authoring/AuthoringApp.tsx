@@ -307,7 +307,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           <Boxes className="size-4" />
         </div>
         <div className="leading-tight">
-          <div className="text-sm font-semibold">Trime Authoring</div>
+          <div className="text-sm font-semibold">Trime Theme Editor</div>
           <div className="text-[10px] text-muted-foreground">typed presets · compose · export yaml</div>
         </div>
 
