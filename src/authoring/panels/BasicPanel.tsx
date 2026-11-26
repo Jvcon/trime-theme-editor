@@ -84,7 +84,7 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
     });
   };
 
-  const mainLayouts = libs.layouts.filter((item) => item.pageRole === "main");
+  const allLayouts = libs.layouts;
 
   const addDevice = (index: number) => {
     const preset = DEVICE_PRESETS[index];
@@ -289,8 +289,8 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
                   ) : null}
                   <Select className="h-7 w-40" value={device.mainLayoutId ?? ""} onChange={(event) => setDeviceMainLayout(index, event.target.value)}>
                     <option value="">Inherit main layout</option>
-                    {device.mainLayoutId && !mainLayouts.some((item) => item.id === device.mainLayoutId) ? <option value={device.mainLayoutId}>{device.mainLayoutId} · missing</option> : null}
-                    {mainLayouts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {device.mainLayoutId && !allLayouts.some((item) => item.id === device.mainLayoutId) ? <option value={device.mainLayoutId}>{device.mainLayoutId} · missing</option> : null}
+                    {allLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.pageRole}</option>)}
                   </Select>
                   <Button size="sm" variant="ghost" className="ml-auto h-7 px-1 text-red-300" disabled={project.devices.length <= 1} onClick={() => removeDevice(index)}><Trash2 /></Button>
                 </div>
@@ -328,8 +328,8 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
                 <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/10 p-2">
                   <Input className="h-7 w-44" value={binding.schemaId} placeholder="schema_id（如 luna_pinyin）" onChange={(event) => updateBinding(index, { schemaId: event.target.value })} />
                   <Select className="h-7 w-40" value={binding.layoutId} onChange={(event) => setBindingLayout(index, event.target.value)}>
-                    {!mainLayouts.some((item) => item.id === binding.layoutId) ? <option value={binding.layoutId}>{binding.layoutId} · missing</option> : null}
-                    {mainLayouts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    {!allLayouts.some((item) => item.id === binding.layoutId) ? <option value={binding.layoutId}>{binding.layoutId} · missing</option> : null}
+                    {allLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.pageRole}</option>)}
                   </Select>
                   <Input className="h-7 w-40" value={binding.alias ?? ""} placeholder="alias（可留空自动生成）" onChange={(event) => updateBinding(index, { alias: event.target.value })} />
                   <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{bindingAlias(binding)}</code>
@@ -396,7 +396,8 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
             <Stat label="Toolbar" value={`${project.chrome?.toolbar.buttons.length ?? 0} buttons`} detail={project.chrome?.toolbar.backStyle ?? "—"} />
             <Stat label="Liquid" value={`${project.chrome?.liquid.tabs.length ?? 0} tabs`} detail={project.chrome?.liquid.tabs.map((tab) => tab.name).join(" / ") ?? "—"} />
             <Stat label="Raw preset keys" value={String(Object.keys(project.customPresetKeys ?? {}).length)} detail="imported command/select keys" />
-            <Stat label="Passthrough" value={String(Object.keys(project.passthrough ?? {}).length)} detail="unmodelled fields" />
+            <Stat label="Fallback colors" value={String(Object.keys(project.fallbackColors ?? {}).length)} detail="imported fallback_colors" />
+            <Stat label="Passthrough" value={String(Object.keys(project.passthrough ?? {}).length)} detail="unmodelled sections" />
           </div>
           <p className="mt-3 text-[10px] text-muted-foreground">
             编译只读取这份 bundle，并输出一份完整 trime.yaml；导出在 Export 页复制或下载。

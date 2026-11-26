@@ -40,6 +40,10 @@ const BUILTIN_STYLES = new Set(["default", "modifier", "enter", "space", "off"])
 export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
   const card = project.theme;
   const variant = card.variants[project.variant];
+  const rawSchemes = project.passthrough?.preset_color_schemes;
+  const extraSchemeCount = rawSchemes && typeof rawSchemes === "object" && !Array.isArray(rawSchemes)
+    ? Object.keys(rawSchemes as Record<string, unknown>).filter((name) => name !== "light" && name !== "dark").length
+    : 0;
   const [stateField, setStateField] = useState<(typeof STATE_FIELDS)[number]>("pressed");
   const [overrideToken, setOverrideToken] = useState("surface");
   const [overrideValue, setOverrideValue] = useState("#ffffff");
@@ -130,6 +134,7 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
           <option value="dark">dark</option>
         </Select>
         <Badge variant={card.builtin ? "muted" : "success"}>{card.builtin ? "builtin · read-only" : "custom"}</Badge>
+        {extraSchemeCount > 0 ? <Badge variant="muted" title="这些原始 scheme 通过 passthrough 保留，不在这里编辑">{extraSchemeCount} extra schemes preserved</Badge> : null}
         <div className="ml-auto flex gap-1">
           <Button size="sm" variant="outline" onClick={duplicateCard}><Copy />Duplicate</Button>
           <Button size="sm" variant="outline" onClick={createCard}><Plus />New card</Button>

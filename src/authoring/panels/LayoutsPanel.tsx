@@ -23,6 +23,17 @@ type Props = {
 
 type Behavior = (typeof BEHAVIORS)[number][0];
 
+const KEY_COLOR_FIELDS = [
+  ["key_back_color", "Key back"],
+  ["key_text_color", "Key text"],
+  ["key_symbol_color", "Key symbol"],
+  ["key_border_color", "Key border"],
+  ["hilited_key_back_color", "Pressed back"],
+  ["hilited_key_text_color", "Pressed text"],
+  ["hilited_key_symbol_color", "Pressed symbol"],
+  ["hilited_key_border_color", "Pressed border"],
+] as const;
+
 const targetOf = (slot: KeySlot | undefined, behavior: Behavior): ActionRef | undefined =>
   slot ? (slot as unknown as Record<string, ActionRef | undefined>)[behavior] : undefined;
 
@@ -38,6 +49,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
   const [drop, setDrop] = useState<{ row: number; index: number } | null>(null);
 
   const selectedKey = selected ? layout.rows[selected.row]?.keys[selected.key] : undefined;
+  const colorOverrideCount = KEY_COLOR_FIELDS.filter(([field]) => Boolean(selectedKey?.[field])).length;
   const main = mainLayout(project, libs);
   const allPages = pages(project, libs);
   const availablePages = libs.layouts.filter((item) => item.id !== main.id && !project.layouts.some((layout) => layout.id === item.id));
@@ -485,6 +497,32 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
                       <Field label="Height px"><Input type="number" value={selectedKey.height ?? 0} onChange={(event) => updateKey((key) => { key.height = Number(event.target.value); })} /></Field>
                     </div>
 
+                    <details className="rounded border border-border bg-muted/10 p-2">
+                      <summary className="cursor-pointer text-[10px] font-medium">Key color overrides{colorOverrideCount > 0 ? ` · ${colorOverrideCount}` : ""}</summary>
+                      <p className="mt-1 text-[9px] text-muted-foreground">来自导入的键级颜色覆盖，优先级高于 style type；留空则继承 style。</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {KEY_COLOR_FIELDS.map(([field, label]) => (
+                          <Field key={field} label={label}>
+                            <div className="flex gap-1">
+                              <Input
+                                className="h-7"
+                                value={selectedKey[field] ?? ""}
+                                placeholder="inherit"
+                                onChange={(event) => updateKey((key) => {
+                                  const value = event.target.value;
+                                  if (value) key[field] = value;
+                                  else delete key[field];
+                                })}
+                              />
+                              {selectedKey[field] ? (
+                                <Button size="sm" variant="ghost" className="h-7 px-1 text-red-300" onClick={() => updateKey((key) => { delete key[field]; })}>×</Button>
+                              ) : null}
+                            </div>
+                          </Field>
+                        ))}
+                      </div>
+                    </details>
+
                     <div className="space-y-1">
                       <Label>Popup items</Label>
                       <p className="text-[9px] text-muted-foreground">每项是上屏文本；支持增删、排序。popup 非空时 long_click 不会触发。</p>
@@ -557,7 +595,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
               </TabsContent>
 
               <TabsContent value="style" className="mt-0 space-y-2">
-                <p className="text-[10px] text-muted-foreground">键位只引用 style type；颜色由主题色卡 token 展开，不允许单键写 hex。</p>
+                <p className="text-[10px] text-muted-foreground">键位默认引用 style type；导入的键级颜色覆盖会保留并优先输出，可在 Key 页查看或清除。</p>
                 {Object.values(project.keyStyles).map((style) => (
                   <div key={style.id} className="flex items-center gap-2 rounded border border-border bg-muted/20 px-2 py-1 text-[10px]">
                     <Badge variant="muted">{style.id}</Badge>
