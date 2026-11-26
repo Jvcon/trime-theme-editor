@@ -26,6 +26,7 @@ function shape(projectInput: ProjectBundle): Shape {
   return {
     meta: project.meta,
     theme: project.theme,
+    customThemeCards: project.customThemeCards ?? [],
     variant: project.variant,
     mainLayoutId: project.mainLayoutId,
     // Page order is meaningful, so keep pageIds as an array.
@@ -78,7 +79,7 @@ function flatten(value: unknown, prefix: string, output: Record<string, string>)
 
 const SECTIONS: Array<{ id: string; title: string; match: (path: string) => boolean }> = [
   { id: "meta", title: "Meta", match: (path) => path.startsWith("meta.") },
-  { id: "theme", title: "Theme card", match: (path) => path.startsWith("theme.") || path.startsWith("variant") },
+  { id: "theme", title: "Theme cards", match: (path) => path.startsWith("theme.") || path.startsWith("customThemeCards") || path.startsWith("variant") },
   { id: "styles", title: "Key styles", match: (path) => path.startsWith("keyStyles") },
   { id: "layouts", title: "Layouts", match: (path) => path.startsWith("mainLayoutId") || path.startsWith("pageIds") || path.startsWith("layouts.") || path.startsWith("effective.pages") },
   { id: "macros", title: "Macros", match: (path) => path.startsWith("macros.") },

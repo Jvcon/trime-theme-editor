@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import type { PresetLibraries, ProjectBundle, ThemeCardPreset, Variant } from "../types";
-import { BUILTIN_PRESETS } from "../presets";
-import { cloneThemeCard, newThemeCard, tokenValue } from "../utils";
+import { cloneThemeCard, defaultThemeSelection, newThemeCard, tokenValue } from "../utils";
 
 type Props = {
   project: ProjectBundle;
@@ -18,6 +17,8 @@ type Props = {
 
 const STYLE_FIELDS = ["background", "text", "symbol", "border"] as const;
 const STATE_FIELDS = ["hover", "pressed", "disabled"] as const;
+const FAMILY_ORDER = ["Dracula", "Catppuccin", "Solarized", "Material", "Nord"];
+const CUSTOM_GROUP = "自定义";
 const METRIC_FIELDS = [
   ["keyWidth", "Key width"],
   ["keyHeight", "Key height"],
@@ -37,9 +38,32 @@ const METRIC_FIELDS = [
 
 const BUILTIN_STYLES = new Set(["default", "modifier", "enter", "space", "off"]);
 
+function groupedCards(cards: ThemeCardPreset[]): Array<{ label: string; cards: ThemeCardPreset[] }> {
+  const groups = new Map<string, ThemeCardPreset[]>();
+  for (const card of cards) {
+    const label = card.builtin ? (card.family ?? "其他") : CUSTOM_GROUP;
+    const list = groups.get(label) ?? [];
+    list.push(card);
+    groups.set(label, list);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => {
+      const leftIndex = FAMILY_ORDER.indexOf(left);
+      const rightIndex = FAMILY_ORDER.indexOf(right);
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+      }
+      return left.localeCompare(right);
+    })
+    .map(([label, items]) => ({ label, cards: items }));
+}
+
+function optionLabel(card: ThemeCardPreset): string {
+  return card.builtin ? card.name : `${card.name} · 自定义`;
+}
+
 export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
-  const card = project.theme;
-  const variant = card.variants[project.variant];
+  const card = project.theme[project.variant];
   const rawSchemes = project.passthrough?.preset_color_schemes;
   const extraSchemeCount = rawSchemes && typeof rawSchemes === "object" && !Array.isArray(rawSchemes)
     ? Object.keys(rawSchemes as Record<string, unknown>).filter((name) => name !== "light" && name !== "dark").length
@@ -48,39 +72,89 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
   const [overrideToken, setOverrideToken] = useState("surface");
   const [overrideValue, setOverrideValue] = useState("#ffffff");
 
+  const groups = useMemo(() => groupedCards(libs.themeCards), [libs.themeCards]);
+
   const tokenOptions = useMemo(() => {
-    const tokens = Object.keys(variant.tokens);
-    const states = STATE_FIELDS.flatMap((state) => Object.keys(variant.states[state] ?? {}).map((token) => `${state}.${token}`));
+    const tokens = Object.keys(card.tokens);
+    const states = STATE_FIELDS.flatMap((state) => Object.keys(card.states[state] ?? {}).map((token) => `${state}.${token}`));
     return [...tokens, ...states];
-  }, [variant]);
+  }, [card]);
+
+  const selectCard = (variant: Variant, id: string) => {
+    const source = libs.themeCards.find((item) => item.id === id);
+    if (!source) return;
+    mutate((draft) => {
+      const next = structuredClone(source);
+      const other = variant === "light" ? "dark" : "light";
+      // Two slots must not share one id; a second use becomes its own copy.
+      if (!next.builtin && draft.theme[other].id === next.id) {
+        next.id = `${next.id}-${Date.now()}`;
+        next.name = `${next.name} 副本`;
+      }
+      if (!next.builtin) {
+        const library = draft.customThemeCards ?? [];
+        if (!library.some((item) => item.id === next.id)) {
+          draft.customThemeCards = [...library, structuredClone(next)];
+        } else {
+          draft.customThemeCards = library;
+        }
+      }
+      draft.theme[variant] = next;
+      draft.variant = variant;
+    });
+  };
 
   const duplicateCard = () => {
     const clone = cloneThemeCard(card, `${card.name} 副本`);
     mutate((draft) => {
-      draft.theme = clone;
+      draft.customThemeCards = [...(draft.customThemeCards ?? []), structuredClone(clone)];
+      draft.theme[draft.variant] = clone;
     });
     setMessage(`已复制色卡：${clone.name}`);
   };
 
   const createCard = () => {
-    const created = newThemeCard("新色卡");
+    const created = newThemeCard("新色卡", card);
     mutate((draft) => {
-      draft.theme = created;
+      draft.customThemeCards = [...(draft.customThemeCards ?? []), structuredClone(created)];
+      draft.theme[draft.variant] = created;
     });
     setMessage("已新建色卡");
   };
 
   const deleteCard = () => {
-    if (card.builtin) return setMessage("内置色卡只读；请复制后再编辑");
-    const fallback = BUILTIN_PRESETS.themeCards[0];
+    if (card.builtin) return;
     mutate((draft) => {
-      draft.theme = structuredClone(fallback);
+      const fallback = defaultThemeSelection()[draft.variant];
+      draft.customThemeCards = (draft.customThemeCards ?? []).filter((item) => item.id !== card.id);
+      for (const variant of ["light", "dark"] as const) {
+        if (draft.theme[variant].id === card.id) draft.theme[variant] = structuredClone(fallback);
+      }
     });
     setMessage("已删除色卡");
   };
 
-  const editCard = (fn: (card: ThemeCardPreset, draft: ProjectBundle) => void) => {
-    mutate((draft) => fn(draft.theme, draft));
+  /**
+   * Editing a built-in card first creates a custom copy. The copy becomes the
+   * selected scheme for this direction and is kept in the project library.
+   */
+  const editCard = (fn: (target: ThemeCardPreset, draft: ProjectBundle) => void) => {
+    mutate((draft) => {
+      let target = draft.theme[draft.variant];
+      if (target.builtin) {
+        target = cloneThemeCard(target, target.name);
+        draft.theme[draft.variant] = target;
+      }
+      fn(target, draft);
+      if (!target.builtin) {
+        const library = [...(draft.customThemeCards ?? [])];
+        const index = library.findIndex((item) => item.id === target.id);
+        const snapshot = structuredClone(target);
+        if (index >= 0) library[index] = snapshot;
+        else library.push(snapshot);
+        draft.customThemeCards = library;
+      }
+    });
   };
 
   const addStyle = () => {
@@ -120,43 +194,80 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
 
   return (
     <div className="h-full overflow-auto p-5">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold">Theme card</span>
-        <Select className="w-44" value={card.id} onChange={(event) => {
-          const next = libs.themeCards.find((item) => item.id === event.target.value);
-          if (!next) return;
-          mutate((draft) => { draft.theme = structuredClone(next); });
-        }}>
-          {libs.themeCards.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? " · builtin" : " · custom"}</option>)}
-        </Select>
-        <Select className="w-24" value={project.variant} onChange={(event) => mutate((draft) => { draft.variant = event.target.value as Variant; })}>
-          <option value="light">light</option>
-          <option value="dark">dark</option>
-        </Select>
-        <Badge variant={card.builtin ? "muted" : "success"}>{card.builtin ? "builtin · read-only" : "custom"}</Badge>
-        {extraSchemeCount > 0 ? <Badge variant="muted" title="这些原始 scheme 通过 passthrough 保留，不在这里编辑">{extraSchemeCount} extra schemes preserved</Badge> : null}
-        <div className="ml-auto flex gap-1">
-          <Button size="sm" variant="outline" onClick={duplicateCard}><Copy />Duplicate</Button>
-          <Button size="sm" variant="outline" onClick={createCard}><Plus />New card</Button>
-          <Button size="sm" variant="outline" className="text-red-300" disabled={card.builtin} onClick={deleteCard}><Trash2 />Delete</Button>
+      <details className="mb-3 rounded-xl border border-border bg-card p-3" open>
+        <summary className="cursor-pointer text-xs font-semibold">项目信息</summary>
+        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-4">
+          <Field label="名称"><Input value={project.meta.name} onChange={(event) => mutate((draft) => { draft.meta.name = event.target.value; })} /></Field>
+          <Field label="作者"><Input value={project.meta.author} onChange={(event) => mutate((draft) => { draft.meta.author = event.target.value; })} /></Field>
+          <Field label="描述"><Input value={project.meta.description ?? ""} onChange={(event) => mutate((draft) => { draft.meta.description = event.target.value; })} /></Field>
+          <Field label="Config version"><Input value={project.meta.configVersion} onChange={(event) => mutate((draft) => { draft.meta.configVersion = event.target.value; })} /></Field>
+        </div>
+        <p className="mt-1 text-[9px] text-muted-foreground">名称与作者会写入 trime.yaml；config version 对应 <code>config_version</code>。</p>
+      </details>
+
+      <div className="mb-4 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold">色卡</span>
+          <span className="text-[9px] text-muted-foreground">浅色与深色分别选择，影响所有设备</span>
+          {extraSchemeCount > 0 ? <Badge variant="muted" title="这些原始 scheme 通过 passthrough 保留，不在这里编辑">{extraSchemeCount} extra schemes preserved</Badge> : null}
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <Field label="浅色方案">
+            <Select value={project.theme.light.id} onChange={(event) => selectCard("light", event.target.value)}>
+              {groups.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.cards.map((item) => <option key={item.id} value={item.id}>{optionLabel(item)}</option>)}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+          <Field label="深色方案">
+            <Select value={project.theme.dark.id} onChange={(event) => selectCard("dark", event.target.value)}>
+              {groups.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.cards.map((item) => <option key={item.id} value={item.id}>{optionLabel(item)}</option>)}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">预览</span>
+          <Button size="sm" variant={project.variant === "light" ? "default" : "ghost"} onClick={() => mutate((draft) => { draft.variant = "light"; })}>浅色</Button>
+          <Button size="sm" variant={project.variant === "dark" ? "default" : "ghost"} onClick={() => mutate((draft) => { draft.variant = "dark"; })}>深色</Button>
+          {card.builtin ? (
+            <span className="ml-2 text-xs font-semibold">{card.name}</span>
+          ) : (
+            <>
+              <Badge variant="success">自定义</Badge>
+              <Input className="h-7 w-44" value={card.name} onChange={(event) => editCard((target) => { target.name = event.target.value; })} />
+            </>
+          )}
+          <div className="ml-auto flex gap-1">
+            <Button size="sm" variant="outline" onClick={duplicateCard}><Copy />复制</Button>
+            <Button size="sm" variant="outline" onClick={createCard}><Plus />新建</Button>
+            {card.builtin ? null : <Button size="sm" variant="outline" className="text-red-300" onClick={deleteCard}><Trash2 />删除</Button>}
+          </div>
         </div>
       </div>
 
       {card.builtin ? (
-        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-200">
-          内置色卡只读。点击 Duplicate 后会生成可编辑副本，键位仍引用同一组 token。
+        <div className="mb-3 rounded-lg border border-border bg-muted/10 px-3 py-2 text-[10px] text-muted-foreground">
+          修改任意颜色时会自动复制为自定义方案，原方案保持不变。
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="rounded-xl border border-border bg-card p-4">
-          <h3 className="mb-2 text-xs font-semibold">Tokens · {project.variant}</h3>
+          <h3 className="mb-2 text-xs font-semibold">色值 · {project.variant === "light" ? "浅色" : "深色"} · {card.name}</h3>
           <div className="space-y-1">
-            {Object.entries(variant.tokens).map(([token, value]) => (
+            {Object.entries(card.tokens).map(([token, value]) => (
               <div key={token} className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-[10px] text-muted-foreground">{token}</span>
-                <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} disabled={card.builtin} onChange={(event) => editCard((draft, projectDraft) => { draft.variants[projectDraft.variant].tokens[token] = event.target.value; })} />
-                <Input className="h-7" value={value} disabled={card.builtin} onChange={(event) => editCard((draft, projectDraft) => { draft.variants[projectDraft.variant].tokens[token] = event.target.value; })} />
+                <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
+                <Input className="h-7" value={value} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
               </div>
             ))}
           </div>
@@ -164,42 +275,46 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
 
         <div className="space-y-4">
           <section className="rounded-xl border border-border bg-card p-4">
-            <h3 className="mb-2 text-xs font-semibold">State overrides</h3>
+            <h3 className="mb-2 text-xs font-semibold">状态覆盖</h3>
             <div className="mb-2 flex gap-1">
               {STATE_FIELDS.map((state) => (
                 <Button key={state} size="sm" variant={stateField === state ? "default" : "ghost"} onClick={() => setStateField(state)}>{state}</Button>
               ))}
             </div>
             <div className="space-y-1">
-              {Object.entries(variant.states[stateField] ?? {}).map(([token, value]) => (
+              {Object.entries(card.states[stateField] ?? {}).map(([token, value]) => (
                 <div key={token} className="flex items-center gap-2">
                   <span className="w-24 shrink-0 text-[10px] text-muted-foreground">{token}</span>
-                  <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} disabled={card.builtin} onChange={(event) => editCard((draft, projectDraft) => { draft.variants[projectDraft.variant].states[stateField][token] = event.target.value; })} />
-                  <Input className="h-7" value={value} disabled={card.builtin} onChange={(event) => editCard((draft, projectDraft) => { draft.variants[projectDraft.variant].states[stateField][token] = event.target.value; })} />
-                  <Button size="sm" variant="ghost" className="h-7 px-1 text-red-300" disabled={card.builtin} onClick={() => editCard((draft, projectDraft) => { delete draft.variants[projectDraft.variant].states[stateField][token]; })}>×</Button>
+                  <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} onChange={(event) => editCard((target) => { (target.states[stateField] ??= {})[token] = event.target.value; })} />
+                  <Input className="h-7" value={value} onChange={(event) => editCard((target) => { (target.states[stateField] ??= {})[token] = event.target.value; })} />
+                  <Button size="sm" variant="ghost" className="h-7 px-1 text-red-300" onClick={() => editCard((target) => { delete target.states[stateField]?.[token]; })}>×</Button>
                 </div>
               ))}
-              {Object.keys(variant.states[stateField] ?? {}).length === 0 ? <p className="text-[10px] text-muted-foreground">没有该状态的覆盖值。</p> : null}
+              {Object.keys(card.states[stateField] ?? {}).length === 0 ? <p className="text-[10px] text-muted-foreground">没有该状态的覆盖值。</p> : null}
             </div>
             <div className="mt-2 flex items-center gap-1">
               <Select className="h-7 w-28" value={overrideToken} onChange={(event) => setOverrideToken(event.target.value)}>
-                {Object.keys(variant.tokens).map((token) => <option key={token} value={token}>{token}</option>)}
+                {Object.keys(card.tokens).map((token) => <option key={token} value={token}>{token}</option>)}
               </Select>
               <Input className="h-7 w-24" value={overrideValue} onChange={(event) => setOverrideValue(event.target.value)} />
-              <Button size="sm" variant="outline" className="h-7" disabled={card.builtin} onClick={() => editCard((draft, projectDraft) => {
-                const state = draft.variants[projectDraft.variant].states[stateField] ?? {};
+              <Button size="sm" variant="outline" className="h-7" onClick={() => editCard((target) => {
+                const state = target.states[stateField] ?? {};
                 state[overrideToken] = overrideValue;
-                draft.variants[projectDraft.variant].states[stateField] = state;
-              })}>Add override</Button>
+                target.states[stateField] = state;
+              })}>添加覆盖</Button>
             </div>
           </section>
 
           <section className="rounded-xl border border-border bg-card p-4">
             <div className="mb-2 flex items-center gap-2">
-              <h3 className="text-xs font-semibold">Key styles</h3>
+              <h3 className="text-xs font-semibold">键样式</h3>
               <span className="text-[9px] text-muted-foreground">style type → token</span>
-              <Button size="sm" variant="outline" className="ml-auto h-7" onClick={addStyle}><Plus />New style</Button>
+              <Button size="sm" variant="outline" className="ml-auto h-7" onClick={addStyle}><Plus />新建样式</Button>
             </div>
+            <p className="mb-2 text-[9px] text-muted-foreground">
+              default 写入 key_*，off 写入 off_key_*；modifier / enter / space / 自定义样式只写入
+              preset_keyboards 的单键颜色。为保证导出外观一致，非 default 键仍会按当前预览方向固化。
+            </p>
             <div className="space-y-2">
               {Object.values(project.keyStyles).map((style) => (
                 <div key={style.id} className="rounded border border-border bg-muted/10 p-2">
@@ -219,11 +334,11 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
                           <option value="">—</option>
                           {tokenOptions.map((token) => {
                             const [state, key] = token.includes(".") ? token.split(".", 2) : ["tokens", token];
-                            const value = state === "tokens" ? variant.tokens[key] : variant.states[state]?.[key] ?? "";
+                            const value = state === "tokens" ? card.tokens[key] : card.states[state]?.[key] ?? "";
                             return <option key={token} value={token}>{token}{value ? ` · ${value}` : ""}</option>;
                           })}
                         </Select>
-                        <span className="h-3 w-3 shrink-0 rounded border border-border" style={{ background: tokenValue(card, project.variant, (style[field] as string | undefined)) }} />
+                        <span className="h-3 w-3 shrink-0 rounded border border-border" style={{ background: tokenValue(card, (style[field] as string | undefined)) }} />
                       </label>
                     ))}
                   </div>
@@ -258,7 +373,7 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
           </section>
 
           <section className="rounded-xl border border-border bg-card p-4">
-            <h3 className="mb-2 text-xs font-semibold">Metrics & popup</h3>
+            <h3 className="mb-2 text-xs font-semibold">尺寸与 popup</h3>
             <div className="grid grid-cols-2 gap-2">
               {METRIC_FIELDS.map(([field, label]) => (
                 <Field key={field} label={label}>

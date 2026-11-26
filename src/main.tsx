@@ -1,10 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { AuthoringApp } from "./authoring/AuthoringApp";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthoringApp />
+    <ErrorBoundary>
+      <AuthoringApp />
+    </ErrorBoundary>
   </React.StrictMode>,
 );

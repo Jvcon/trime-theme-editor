@@ -37,15 +37,13 @@ const FIXED_KEY_LABELS: Record<string, string> = {
 };
 
 function palette(project: ProjectBundle, libs: PresetLibraries) {
-  const card = project.theme ?? libs.themeCards[0];
-  const variant = project.variant;
+  const card = project.theme[project.variant] ?? libs.themeCards[0];
   const color = (token: string, fallback: string) => {
-    const value = tokenValue(card, variant, token);
+    const value = tokenValue(card, token);
     return value && value !== "transparent" ? value : fallback;
   };
   return {
     card,
-    variant,
     bg: color("bg", "#202124"),
     surface: color("surface", "#2d2f31"),
     surfaceAlt: color("surfaceAlt", "#3c4043"),
@@ -58,7 +56,7 @@ function palette(project: ProjectBundle, libs: PresetLibraries) {
   };
 }
 
-function resolve(value: string | undefined, card: ThemeCardPreset, variant: "light" | "dark", fallback: string): string {
+function resolve(value: string | undefined, card: ThemeCardPreset, fallback: string): string {
   if (!value) return fallback;
   if (value.startsWith("#")) return value;
   if (/^0x[0-9a-fA-F]{8}$/.test(value)) {
@@ -70,7 +68,7 @@ function resolve(value: string | undefined, card: ThemeCardPreset, variant: "lig
     return `rgba(${red}, ${green}, ${blue}, ${(alpha / 255).toFixed(2)})`;
   }
   if (/^0x[0-9a-fA-F]{6}$/.test(value)) return `#${value.slice(2)}`;
-  const token = tokenValue(card, variant, value);
+  const token = tokenValue(card, value);
   return token && token !== "transparent" ? token : fallback;
 }
 
@@ -83,8 +81,8 @@ function ToolbarButtonView({ button, colors }: { button: ToolbarButton; colors: 
   const size = button.size ?? [44, 44];
   const width = Math.min(52, size[0] || 44);
   const height = Math.min(52, size[1] || 44);
-  const background = resolve(button.background?.normal, colors.card, colors.variant, "transparent");
-  const foreground = resolve(button.foreground?.normal, colors.card, colors.variant, colors.text);
+  const background = resolve(button.background?.normal, colors.card, "transparent");
+  const foreground = resolve(button.foreground?.normal, colors.card, colors.text);
   const icon = button.icon ?? button.foreground?.style;
   return (
     <button

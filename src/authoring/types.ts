@@ -1,15 +1,27 @@
 export type Variant = "light" | "dark";
 
-export type ThemeCardPreset = {
+/** Colors for a single scheme. A theme card is one scheme, not a light/dark pair. */
+export type ThemeColorSet = {
+  tokens: Record<string, string>;
+  states: Record<string, Record<string, string>>;
+};
+
+export type ThemeCardPreset = ThemeColorSet & {
   kind: "theme-card";
   id: string;
   name: string;
   version: number;
   builtin: boolean;
-  variants: Record<Variant, {
-    tokens: Record<string, string>;
-    states: Record<string, Record<string, string>>;
-  }>;
+  /** Authoring hint only. Never rendered on the card itself. */
+  appearance?: Variant;
+  /** Picker group, e.g. Dracula / Catppuccin / Solarized. */
+  family?: string;
+};
+
+/** The project picks one scheme for light mode and one for dark mode. */
+export type ThemeSelection = {
+  light: ThemeCardPreset;
+  dark: ThemeCardPreset;
 };
 
 export type KeyStyle = {
@@ -91,6 +103,12 @@ export type LayoutPreset = {
   pageRole: "main" | "number" | "symbols";
   asciiMode?: number;
   rows: LayoutRow[];
+  /**
+   * Landscape variant of this layout. Optional and additive: when a landscape
+   * device binds to this layout, compilation uses the variant. Missing means
+   * the landscape device falls back to this layout with a warning.
+   */
+  landscapeId?: string;
   /** Unmodelled keyboard fields preserved verbatim. */
   passthrough?: Record<string, unknown>;
 };
@@ -232,13 +250,14 @@ export type ChromePatch = {
 };
 
 /**
- * Version 2 project document. This is both the editor document and the
- * exported bundle: it embeds the theme card, layouts, and macros that the
- * project actually uses instead of referencing a built-in library.
+ * Version 3 project document. This is both the editor document and the
+ * exported bundle: it embeds the selected light/dark theme cards, layouts, and
+ * macros that the project actually uses instead of referencing a built-in
+ * library.
  */
 export type ProjectBundle = {
   format: "trime-theme-bundle";
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   /** Storage-only timestamp. Stripped from exported bundles. */
   updatedAt?: number;
@@ -248,8 +267,11 @@ export type ProjectBundle = {
   mainLayoutId: string;
   /** Layout ids composed as switchable pages, besides the main layout. */
   pageIds: string[];
-  theme: ThemeCardPreset;
+  theme: ThemeSelection;
+  /** Preview direction. The compiled light/dark schemes always use theme.light/theme.dark. */
   variant: Variant;
+  /** Project-scoped custom theme cards created by copy / new / edit. */
+  customThemeCards?: ThemeCardPreset[];
   keyStyles: Record<string, KeyStyle>;
   /** Embedded main layout plus every page referenced by pageIds. */
   layouts: LayoutPreset[];

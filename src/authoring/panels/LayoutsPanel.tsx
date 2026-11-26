@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActionField } from "../components/ActionField";
+import { KeyboardPreview, type DropPosition, type KeyPosition } from "../components/KeyboardPreview";
 import { BEHAVIORS, Selector } from "../components/Selector";
-import type { ActionRef, KeySlot, LayoutPreset, PresetLibraries, ProjectBundle } from "../types";
-import { actionLabel, cloneLayout, embedLayout, findLayout, fitLayoutRows, keyStyleColors, mainLayout, pages, pruneBundleLayouts, reflowLayoutRows, tokenValue } from "../utils";
+import { LAYOUT_RULES } from "../devicePresets";
+import { devicesUsingLayout, impactLabel } from "../impact";
+import type { ActionRef, KeySlot, LayoutPreset, Orientation, PresetLibraries, ProjectBundle } from "../types";
+import { actionLabel, addLandscapeVariant, cloneLayout, embedLayout, findLayout, fitLayoutRows, mainLayout, pages, pruneBundleLayouts, reflowLayoutRows, removeLandscapeVariant } from "../utils";
 
 type Props = {
   project: ProjectBundle;
@@ -19,6 +22,14 @@ type Props = {
   mutate: (fn: (draft: ProjectBundle) => void) => void;
   editLayout: (id: string, fn: (layout: LayoutPreset) => void) => void;
   setMessage: (message: string) => void;
+  onPreviewOrientation?: (orientation: Orientation) => void;
+  selected?: KeyPosition;
+  onSelectKey: (position: KeyPosition | undefined) => void;
+  popup?: KeyPosition | null;
+  onPopupKey: (position: KeyPosition | null) => void;
+  rightTab: string;
+  setRightTab: (tab: string) => void;
+  onMoveKey: (from: KeyPosition, to: DropPosition) => void;
 };
 
 type Behavior = (typeof BEHAVIORS)[number][0];
@@ -37,27 +48,45 @@ const KEY_COLOR_FIELDS = [
 const targetOf = (slot: KeySlot | undefined, behavior: Behavior): ActionRef | undefined =>
   slot ? (slot as unknown as Record<string, ActionRef | undefined>)[behavior] : undefined;
 
-export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId, mutate, editLayout, setMessage }: Props) {
+export function LayoutsPanel({
+  project, libs, activeLayoutId, setActiveLayoutId, mutate, editLayout, setMessage, onPreviewOrientation,
+  selected, onSelectKey, popup, onPopupKey, rightTab, setRightTab, onMoveKey,
+}: Props) {
   const layout = findLayout(project, activeLayoutId, libs) ?? mainLayout(project, libs);
-  const card = project.theme ?? libs.themeCards[0];
-  const [selected, setSelected] = useState<{ row: number; key: number }>();
   const [targetBehavior, setTargetBehavior] = useState<Behavior>("click");
-  const [rightTab, setRightTab] = useState("page");
-  const [popup, setPopup] = useState<{ row: number; key: number }>();
   const [newPopup, setNewPopup] = useState("");
-  const [drag, setDrag] = useState<{ row: number; key: number } | null>(null);
-  const [drop, setDrop] = useState<{ row: number; index: number } | null>(null);
 
   const selectedKey = selected ? layout.rows[selected.row]?.keys[selected.key] : undefined;
   const colorOverrideCount = KEY_COLOR_FIELDS.filter(([field]) => Boolean(selectedKey?.[field])).length;
   const main = mainLayout(project, libs);
   const allPages = pages(project, libs);
-  const availablePages = libs.layouts.filter((item) => item.id !== main.id && !project.layouts.some((layout) => layout.id === item.id));
+  const variantIds = new Set(
+    project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  const availablePages = libs.layouts.filter((item) => item.id !== main.id && !variantIds.has(item.id) && !project.layouts.some((layout) => layout.id === item.id));
+  const isVariantActive = variantIds.has(activeLayoutId);
+  const activeBase = isVariantActive
+    ? project.layouts.find((item) => item.landscapeId === activeLayoutId) ?? layout
+    : layout;
+  const landscapeVariant = activeBase?.landscapeId ? findLayout(project, activeBase.landscapeId, libs) : undefined;
+  const baseLayoutOptions = libs.layouts.filter((item) => !variantIds.has(item.id) && item.pageRole === "main");
+  const referencedElsewhere = new Set<string>([
+    ...project.devices.map((device) => device.mainLayoutId).filter((value): value is string => Boolean(value)),
+    ...project.schemaBindings.map((binding) => binding.layoutId),
+  ]);
+  const detached = project.layouts.filter((item) => (
+    item.id !== main.id && !project.pageIds.includes(item.id) && !variantIds.has(item.id) && !referencedElsewhere.has(item.id)
+  ));
+  const usage = devicesUsingLayout(project, layout.id);
+
+  useEffect(() => {
+    onPreviewOrientation?.(isVariantActive ? "landscape" : "portrait");
+  }, [isVariantActive, onPreviewOrientation]);
 
   const choose = (id: string) => {
     setActiveLayoutId(id);
-    setSelected(undefined);
-    setPopup(undefined);
+    onSelectKey(undefined);
+    onPopupKey(null);
   };
 
   const updateKey = (fn: (key: KeySlot) => void) => {
@@ -98,7 +127,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
       if (!row) return;
       row.keys.splice(selected.key + 1, 0, structuredClone(row.keys[selected.key]));
     });
-    setSelected({ row: selected.row, key: selected.key + 1 });
+    onSelectKey({ row: selected.row, key: selected.key + 1 });
   };
 
   const moveKey = (direction: -1 | 1) => {
@@ -109,7 +138,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
       if (!row || next < 0 || next >= row.keys.length) return;
       [row.keys[selected.key], row.keys[next]] = [row.keys[next], row.keys[selected.key]];
     });
-    setSelected({ row: selected.row, key: selected.key + direction });
+    onSelectKey({ row: selected.row, key: selected.key + direction });
   };
 
   const moveKeyToRow = (direction: -1 | 1) => {
@@ -123,7 +152,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
       const [moved] = source.keys.splice(selected.key, 1);
       destination.keys.splice(Math.min(selected.key, destination.keys.length), 0, moved);
     });
-    setSelected({ row: target, key: Math.min(selected.key, layout.rows[target]?.keys.length ?? 0) });
+    onSelectKey({ row: target, key: Math.min(selected.key, layout.rows[target]?.keys.length ?? 0) });
     setMessage("已移动到相邻行；需要时用 Fit/Reflow 校准行宽");
   };
 
@@ -132,7 +161,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     editLayout(layout.id, (draft) => {
       draft.rows[selected.row]?.keys.splice(selected.key, 1);
     });
-    setSelected(undefined);
+    onSelectKey(undefined);
   };
 
   const moveRow = (rowIndex: number, direction: -1 | 1) => {
@@ -141,7 +170,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     editLayout(layout.id, (draft) => {
       [draft.rows[rowIndex], draft.rows[next]] = [draft.rows[next], draft.rows[rowIndex]];
     });
-    setSelected(undefined);
+    onSelectKey(undefined);
   };
 
   const deleteRow = (rowIndex: number) => {
@@ -149,7 +178,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     editLayout(layout.id, (draft) => {
       draft.rows.splice(rowIndex, 1);
     });
-    setSelected(undefined);
+    onSelectKey(undefined);
   };
 
   const fitRow = (rowIndex: number) => {
@@ -163,32 +192,6 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     });
   };
 
-  const resetDrag = () => {
-    setDrag(null);
-    setDrop(null);
-  };
-
-  const moveKeyTo = (from: { row: number; key: number }, to: { row: number; index: number }) => {
-    if (from.row === to.row && (to.index === from.key || to.index === from.key + 1)) {
-      resetDrag();
-      return;
-    }
-    editLayout(layout.id, (draft) => {
-      const sourceRow = draft.rows[from.row];
-      const targetRow = draft.rows[to.row];
-      if (!sourceRow || !targetRow || !sourceRow.keys[from.key]) return;
-      const [moved] = sourceRow.keys.splice(from.key, 1);
-      let index = to.index;
-      if (sourceRow === targetRow && from.key < to.index) index -= 1;
-      index = Math.max(0, Math.min(index, targetRow.keys.length));
-      targetRow.keys.splice(index, 0, moved);
-    });
-    const nextIndex = from.row === to.row && from.key < to.index ? to.index - 1 : to.index;
-    setSelected({ row: to.row, key: Math.max(0, Math.min(nextIndex, layout.rows[to.row]?.keys.length ?? 0)) });
-    setMessage("已移动键位；注意检查行宽是否仍为 100%");
-    resetDrag();
-  };
-
   const fitAllRows = () => {
     editLayout(layout.id, (draft) => fitLayoutRows(draft));
     setMessage("已把每一行宽度校准到 100%");
@@ -196,7 +199,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
 
   const reflowRows = () => {
     editLayout(layout.id, (draft) => reflowLayoutRows(draft));
-    setSelected(undefined);
+    onSelectKey(undefined);
     setMessage("已按宽度重新分行，并校准到 100%");
   };
 
@@ -211,6 +214,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
   const selectMainLayout = (id: string) => {
     const next = libs.layouts.find((item) => item.id === id);
     if (!next) return;
+    const previousMain = project.layouts.find((item) => item.id === project.mainLayoutId);
     mutate((draft) => {
       embedLayout(draft, next);
       draft.mainLayoutId = next.id;
@@ -218,6 +222,36 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
       pruneBundleLayouts(draft);
     });
     choose(id);
+    setMessage(previousMain && !previousMain.builtin
+      ? `已切换主布局；「${previousMain.name}」已保留，可在主布局下拉或「保留的布局」中切回`
+      : `已切换主布局为 ${next.name}`);
+  };
+
+  const setDetachedAsMain = (id: string) => {
+    const target = project.layouts.find((item) => item.id === id);
+    if (!target) return;
+    mutate((draft) => {
+      draft.mainLayoutId = id;
+      draft.pageIds = draft.pageIds.filter((pageId) => pageId !== id);
+      pruneBundleLayouts(draft);
+    });
+    choose(id);
+    setMessage(`已把「${target.name}」设为主布局`);
+  };
+
+  const deleteDetached = (id: string) => {
+    const target = project.layouts.find((item) => item.id === id);
+    if (!target) return;
+    if (!window.confirm(`删除保留的布局「${target.name}」？`)) return;
+    mutate((draft) => {
+      draft.layouts = draft.layouts.filter((item) => item.id !== id && item.id !== target.landscapeId);
+      for (const item of draft.layouts) {
+        if (item.landscapeId === id) delete item.landscapeId;
+      }
+      pruneBundleLayouts(draft);
+    });
+    if (activeLayoutId === id) choose(project.mainLayoutId);
+    setMessage("已删除保留的布局");
   };
 
   const duplicateLayout = () => {
@@ -247,12 +281,57 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
     setMessage("已新增空白页");
   };
 
+  const createLandscapeVariant = () => {
+    const base = activeBase ?? layout;
+    let createdId = "";
+    mutate((draft) => {
+      createdId = addLandscapeVariant(draft, base) ?? "";
+    });
+    if (createdId) choose(createdId);
+    setMessage("已创建横屏变体（默认克隆竖屏结构，可再用「精简派生」去一行）");
+  };
+
+  const simplifyLandscapeVariant = () => {
+    if (!isVariantActive) return;
+    editLayout(layout.id, (draft) => {
+      if (draft.rows.length > LAYOUT_RULES.simplifyAboveRows) draft.rows.splice(-1, 1);
+      fitLayoutRows(draft);
+    });
+    setMessage("已去掉最后一行并校准行宽");
+  };
+
+  const deleteLandscapeVariant = () => {
+    if (!isVariantActive) return;
+    let ownerId = "";
+    mutate((draft) => {
+      ownerId = removeLandscapeVariant(draft, layout.id) ?? "";
+    });
+    if (ownerId) choose(ownerId);
+    setMessage("已删除横屏变体；横屏设备会回退到竖屏结构");
+  };
+
   const deleteLayout = () => {
+    if (isVariantActive) {
+      deleteLandscapeVariant();
+      return;
+    }
     if (layout.builtin) return setMessage("内置布局只读；请复制后再编辑");
+    const variantId = layout.landscapeId;
+    const affected = project.devices.filter((device) => device.mainLayoutId === layout.id).length;
+    const confirmed = window.confirm(
+      `删除「${layout.name}」${variantId ? "及其横屏变体" : ""}？${affected ? `\n${affected} 个设备将回退到项目主布局。` : ""}`,
+    );
+    if (!confirmed) return;
     const fallback = libs.layouts.find((item) => item.id === "qwerty26") ?? libs.layouts.find((item) => item.pageRole === "main");
     mutate((draft) => {
-      draft.layouts = draft.layouts.filter((item) => item.id !== layout.id);
-      draft.pageIds = draft.pageIds.filter((id) => id !== layout.id);
+      draft.layouts = draft.layouts.filter((item) => item.id !== layout.id && item.id !== variantId);
+      draft.pageIds = draft.pageIds.filter((id) => id !== layout.id && id !== variantId);
+      for (const item of draft.layouts) {
+        if (item.landscapeId === layout.id || item.landscapeId === variantId) delete item.landscapeId;
+      }
+      for (const device of draft.devices) {
+        if (device.mainLayoutId === layout.id) delete device.mainLayoutId;
+      }
       if (draft.mainLayoutId === layout.id && fallback) {
         embedLayout(draft, fallback);
         draft.mainLayoutId = fallback.id;
@@ -276,9 +355,13 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
   };
 
   const removePage = (id: string) => {
+    const variantId = project.layouts.find((item) => item.id === id)?.landscapeId;
     mutate((draft) => {
       draft.pageIds = draft.pageIds.filter((item) => item !== id);
-      draft.layouts = draft.layouts.filter((item) => item.id !== id);
+      draft.layouts = draft.layouts.filter((item) => item.id !== id && item.id !== variantId);
+      for (const item of draft.layouts) {
+        if (item.landscapeId === id) delete item.landscapeId;
+      }
       pruneBundleLayouts(draft);
     });
     if (activeLayoutId === id) choose(project.mainLayoutId);
@@ -287,10 +370,35 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Main</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">主布局</span>
         <Select className="h-7 w-40" value={main.id} onChange={(event) => selectMainLayout(event.target.value)}>
-          {libs.layouts.filter((item) => item.pageRole === "main").map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
+          {baseLayoutOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
         </Select>
+        <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">正在编辑</span>
+        {layout.pageRole === "main" ? (
+          <>
+            <div className="flex items-center gap-0.5 rounded-md border border-border bg-muted/20 p-0.5">
+              <button
+                type="button"
+                className={`rounded px-2 py-0.5 text-[10px] ${!isVariantActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => choose(activeBase?.id ?? layout.id)}
+              >竖屏</button>
+              <button
+                type="button"
+                className={`rounded px-2 py-0.5 text-[10px] ${isVariantActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40"}`}
+                onClick={() => (landscapeVariant ? choose(landscapeVariant.id) : createLandscapeVariant())}
+              >{landscapeVariant ? "横屏" : "横屏 · 未创建"}</button>
+            </div>
+            {isVariantActive ? (
+              <>
+                <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={simplifyLandscapeVariant}>精简派生</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-[10px] text-red-300" onClick={deleteLandscapeVariant}>删除变体</Button>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <span className="text-[10px] text-muted-foreground">页面不区分横竖屏</span>
+        )}
         <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">Pages</span>
         <div className="flex flex-wrap items-center gap-1">
           {allPages.map((page, index) => (
@@ -308,6 +416,9 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
           <Button size="sm" variant="ghost" className="h-6 px-1 text-[10px]" onClick={createLayout}><Plus className="size-3" />Blank</Button>
         </div>
         <div className="ml-auto flex items-center gap-1">
+          <Badge variant={isVariantActive ? "success" : "muted"}>
+            {layout.pageRole !== "main" ? "页面" : isVariantActive ? "横屏变体" : landscapeVariant ? "含横屏变体" : "仅竖屏"}
+          </Badge>
           <Badge variant="muted">{layout.rows.reduce((sum, row) => sum + row.keys.length, 0)} keys</Badge>
           <Badge variant="muted">{layout.rows.length} rows</Badge>
           {layout.builtin ? <Badge variant="muted">builtin</Badge> : <Badge variant="success">custom</Badge>}
@@ -316,101 +427,72 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-4 py-1 text-[10px] text-muted-foreground">
+        {layout.pageRole === "main" ? (
+          <>
+            <span className={usage.length ? "text-amber-300" : ""}>{impactLabel(usage)}</span>
+            {isVariantActive
+              ? <span>· 编辑横屏变体不会影响竖屏</span>
+              : landscapeVariant
+                ? <span>· 竖屏改动不会自动同步横屏变体</span>
+                : <span>· 不创建横屏变体时，横屏设备沿用竖屏结构</span>}
+          </>
+        ) : (
+          <span>页面：由运行时切换，不直接绑定设备</span>
+        )}
+      </div>
+
+      {detached.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-4 py-1 text-[10px]">
+          <span className="text-muted-foreground" title="切换主布局不会删除你修改过的布局">保留的布局</span>
+          {detached.map((item) => (
+            <span key={item.id} className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
+              <button
+                type="button"
+                className={activeLayoutId === item.id ? "text-primary" : ""}
+                title="继续编辑"
+                onClick={() => choose(item.id)}
+              >{item.name}</button>
+              <span className="text-[8px] text-muted-foreground">{item.pageRole}</span>
+              <button
+                type="button"
+                className="text-[9px] text-muted-foreground hover:text-foreground"
+                onClick={() => setDetachedAsMain(item.id)}
+              >设为主布局</button>
+              <button type="button" className="text-red-300" onClick={() => deleteDetached(item.id)}>×</button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-4 xl:grid-cols-[minmax(0,3fr)_minmax(340px,2fr)]">
         <div className="flex min-h-0 flex-col gap-3">
-          <section className="rounded-xl border border-border bg-card p-3">
+          <div className="hidden rounded-lg border border-border bg-muted/10 px-3 py-2 text-[10px] text-muted-foreground lg:block">
+            键盘在右侧「键盘编辑」中：点击选键、拖拽移动、长按 popup。小屏时这里会内嵌同一编辑器。
+          </div>
+
+          <section className="rounded-xl border border-border bg-card p-3 lg:hidden">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-medium">Keyboard preview</span>
+              <span className="text-xs font-medium">键盘编辑</span>
               <Badge variant="muted">{layout.name}</Badge>
-              <span className="ml-auto text-[9px] text-muted-foreground">点击选择 · 长按 popup · 双击 action · 拖拽移动/跨行</span>
+              <span className="ml-auto text-[9px] text-muted-foreground">点击选键 · 拖拽移动 · 长按 popup</span>
             </div>
-            <div className="relative mx-auto w-full max-w-2xl rounded-lg bg-muted/20 p-3">
-              {layout.rows.map((row, rowIndex) => (
-                <div
-                  key={rowIndex}
-                  className={`mb-1 flex gap-1 ${drop?.row === rowIndex && drop.index >= row.keys.length ? "rounded ring-1 ring-primary" : ""}`}
-                  onDragOver={(event) => {
-                    if (!drag) return;
-                    event.preventDefault();
-                    setDrop({ row: rowIndex, index: row.keys.length });
-                  }}
-                  onDrop={(event) => {
-                    if (!drag) return;
-                    event.preventDefault();
-                    moveKeyTo(drag, { row: rowIndex, index: row.keys.length });
-                  }}
-                >
-                  {row.keys.map((key, keyIndex) => (
-                    <PreviewKey
-                      key={keyIndex}
-                      slot={key}
-                      height={row.height}
-                      colors={keyStyleColors(card, project.variant, project.keyStyles, key.style)}
-                      selected={selected?.row === rowIndex && selected?.key === keyIndex}
-                      dragging={drag?.row === rowIndex && drag.key === keyIndex}
-                      dropBefore={Boolean(drag) && drop?.row === rowIndex && drop.index === keyIndex}
-                      actionText={actionLabel(key.click, libs)}
-                      onSelect={() => { setSelected({ row: rowIndex, key: keyIndex }); setRightTab("key"); }}
-                      onPopup={() => { setPopup({ row: rowIndex, key: keyIndex }); setRightTab("key"); }}
-                      onDragStart={() => setDrag({ row: rowIndex, key: keyIndex })}
-                      onDragEnd={resetDrag}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setDrop({ row: rowIndex, index: keyIndex });
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (drag) moveKeyTo(drag, { row: rowIndex, index: keyIndex });
-                      }}
-                    />
-                  ))}
-                </div>
-              ))}
-              {popup ? (() => {
-                const row = layout.rows[popup.row];
-                const key = row?.keys[popup.key];
-                if (!row || !key || !key.popup?.length) return null;
-                const rowHeight = (value: typeof row) => value.height ?? value.keys[0]?.height ?? 48;
-                let top = 12;
-                for (let index = 0; index < popup.row; index += 1) top += rowHeight(layout.rows[index]) + 4;
-                top += rowHeight(row) + 4;
-                const left = row.keys.slice(0, popup.key).reduce((sum, item) => sum + item.width, 0) + key.width / 2;
-                const popupWidth = Math.max(32, project.metrics?.popupWidth ?? 44);
-                const popupHeight = Math.max(28, project.metrics?.popupKeyHeight ?? 48);
-                const popupTextSize = project.metrics?.popupTextSize ?? 22;
-                const popupBack = tokenValue(card, project.variant, "surfaceAlt");
-                const popupText = tokenValue(card, project.variant, "text");
-                return (
-                  <div className="pointer-events-none absolute z-20" style={{ left: `${left}%`, top, transform: "translateX(-50%)" }}>
-                    <div className="pointer-events-auto flex gap-1 rounded-lg border p-1 shadow-2xl" style={{ background: popupBack, borderColor: tokenValue(card, project.variant, "border") }}>
-                      {key.popup.map((item) => (
-                        <button key={item} type="button" className="flex items-center justify-center rounded border" style={{ minWidth: popupWidth, height: popupHeight, fontSize: Math.min(popupTextSize, 24), background: tokenValue(card, project.variant, "surface"), color: popupText, borderColor: tokenValue(card, project.variant, "border") }} onClick={() => setMessage(`popup commits: ${item}`)}>
-                          {item}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })() : null}
-            </div>
-            {popup ? (
-              <div className="mt-2 rounded-lg border border-border bg-popover p-2">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-[10px] font-medium">Popup preview</span>
-                  <span className="text-[9px] text-muted-foreground">popup 非空时 long_click 不触发</span>
-                  <Button size="sm" variant="ghost" className="ml-auto h-5 px-1 text-[9px]" onClick={() => setPopup(undefined)}>close</Button>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {(layout.rows[popup.row]?.keys[popup.key]?.popup ?? []).length > 0
-                    ? (layout.rows[popup.row]?.keys[popup.key]?.popup ?? []).map((item) => (
-                      <button key={item} type="button" className="rounded border border-border bg-background px-2 py-1 text-xs" onClick={() => setMessage(`popup commits: ${item}`)}>{item}</button>
-                    ))
-                    : <span className="text-[10px] text-muted-foreground">该键没有 popup。</span>}
-                </div>
-              </div>
-            ) : null}
+            <KeyboardPreview
+              project={project}
+              libs={libs}
+              layout={layout}
+              metrics={project.metrics ?? {}}
+              orientation={isVariantActive ? "landscape" : "portrait"}
+              fit="full"
+              interactive
+              selected={selected}
+              onSelect={onSelectKey}
+              popup={popup}
+              onPopup={onPopupKey}
+              onMoveKey={onMoveKey}
+              onMessage={setMessage}
+              onClosePopup={() => onPopupKey(null)}
+            />
           </section>
 
           <section className="rounded-xl border border-border bg-card p-3">
@@ -428,7 +510,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
                   <span className="w-16 text-muted-foreground">{row.keys.length} keys</span>
                   {(() => {
                     const sum = row.keys.reduce((total, key) => total + (key.width || 0), 0);
-                    return <span className={`w-14 ${Math.abs(sum - 100) > 0.5 ? "text-amber-300" : "text-muted-foreground"}`} title="该行宽度合计">{sum.toFixed(1)}%</span>;
+                    return <span className={`w-14 ${Math.abs(sum - 100) > LAYOUT_RULES.rowWidthTolerance ? "text-amber-300" : "text-muted-foreground"}`} title="该行宽度合计">{sum.toFixed(1)}%</span>;
                   })()}
                   <span className="text-muted-foreground">height</span>
                   <Input className="h-6 w-14" type="number" value={row.height ?? 0} onChange={(event) => editLayout(layout.id, (draft) => { draft.rows[rowIndex].height = Number(event.target.value); })} />
@@ -443,7 +525,7 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
           </section>
 
           <Selector libs={libs} targetBehavior={targetBehavior} setTargetBehavior={(value) => setTargetBehavior(value as Behavior)} onAssign={(action) => {
-            if (!selected) return setMessage("先在预览里选择一个键");
+            if (!selected) return setMessage("先在右侧键盘编辑里选择一个键");
             setBehavior(targetBehavior, action);
           }} />
         </div>
@@ -451,10 +533,10 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
         <section className="min-h-0 rounded-xl border border-border bg-card p-3">
           <Tabs value={rightTab} onValueChange={setRightTab}>
             <TabsList>
-              <TabsTrigger value="page">Page</TabsTrigger>
-              <TabsTrigger value="key">Key</TabsTrigger>
-              <TabsTrigger value="behavior">Behavior</TabsTrigger>
-              <TabsTrigger value="style">Style</TabsTrigger>
+              <TabsTrigger value="page">页面</TabsTrigger>
+              <TabsTrigger value="key">键</TabsTrigger>
+              <TabsTrigger value="behavior">行为</TabsTrigger>
+              <TabsTrigger value="style">样式</TabsTrigger>
             </TabsList>
 
             <div className="mt-2 max-h-[calc(100vh-13rem)] overflow-auto pr-1">
@@ -610,67 +692,6 @@ export function LayoutsPanel({ project, libs, activeLayoutId, setActiveLayoutId,
         </section>
       </div>
     </div>
-  );
-}
-
-function PreviewKey({ slot, height, colors, selected, dragging, dropBefore, actionText, onSelect, onPopup, onDragStart, onDragEnd, onDragOver, onDrop }: {
-  slot: KeySlot;
-  height?: number;
-  colors: { background: string; text: string; border: string; symbol: string };
-  selected: boolean;
-  dragging: boolean;
-  dropBefore: boolean;
-  actionText: string;
-  onSelect: () => void;
-  onPopup: () => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onDragOver: (event: React.DragEvent<HTMLButtonElement>) => void;
-  onDrop: (event: React.DragEvent<HTMLButtonElement>) => void;
-}) {
-  const timer = useRef<number | undefined>(undefined);
-  const fired = useRef(false);
-
-  const start = () => {
-    fired.current = false;
-    timer.current = window.setTimeout(() => {
-      fired.current = true;
-      if (slot.popup?.length) onPopup();
-    }, 450);
-  };
-  const stop = () => {
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = undefined;
-  };
-
-  return (
-    <button
-      type="button"
-      draggable
-      className={`relative min-w-0 overflow-hidden rounded-md border px-1 text-[11px] ${selected ? "ring-2 ring-primary" : ""} ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-l-2 border-primary" : ""}`}
-      style={{ width: `${slot.width}%`, height: height ?? slot.height ?? 48, background: colors.background, color: colors.text, borderColor: colors.border }}
-      title={actionText}
-      onPointerDown={start}
-      onPointerUp={stop}
-      onPointerLeave={stop}
-      onClick={() => { if (!fired.current) onSelect(); fired.current = false; }}
-      onDoubleClick={() => (slot.popup?.length ? onPopup() : onSelect())}
-      onDragStart={(event) => {
-        stop();
-        event.dataTransfer.effectAllowed = "move";
-        event.dataTransfer.setData("text/plain", `${slot.label ?? actionText}`);
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
-      <span className="block whitespace-normal break-words leading-tight">{slot.label ?? actionText}</span>
-      {slot.label_symbol ? <span className="absolute left-1 top-0 text-[8px]" style={{ color: colors.symbol }}>{slot.label_symbol}</span> : null}
-      {slot.hint ? <span className="absolute inset-x-1 bottom-0 truncate text-[8px]" style={{ color: colors.symbol }}>{slot.hint}</span> : null}
-      {slot.popup?.length ? <span className="absolute right-1 top-0 text-[8px] opacity-70">▾</span> : null}
-      {slot.long_click ? <span className="absolute right-1 bottom-0 text-[8px] opacity-60">↳</span> : null}
-    </button>
   );
 }
 

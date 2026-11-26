@@ -3,7 +3,7 @@ import { defaultBundle } from "./compiler";
 import { KEYCODES } from "./catalogs";
 import { expandThemeDsl, ThemeDslError } from "./dsl";
 import { BUILTIN_PRESETS } from "./presets";
-import type { ActionRef, ChromePatch, KeySlot, LayoutPreset, LayoutRow, LiquidConfig, LiquidTab, MacroPreset, MacroStep, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, ToolbarConfig, Variant, WindowConfig } from "./types";
+import type { ActionRef, ChromePatch, KeySlot, LayoutPreset, LayoutRow, LiquidConfig, LiquidTab, MacroPreset, MacroStep, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, ToolbarConfig, WindowConfig } from "./types";
 import { defaultKeyStyles, fitLayoutRows, normalizeChrome, slug } from "./utils";
 
 type Dict = Record<string, unknown>;
@@ -90,7 +90,7 @@ function number(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function variantOf(scheme: Dict): ThemeCardPreset["variants"][Variant] {
+function variantOf(scheme: Dict): Pick<ThemeCardPreset, "tokens" | "states"> {
   return {
     tokens: {
       bg: hex(scheme.back_color ?? scheme.root_background, FALLBACK.bg),
@@ -122,7 +122,7 @@ function variantOf(scheme: Dict): ThemeCardPreset["variants"][Variant] {
   };
 }
 
-function buildCard(doc: Dict, report: ImportReport): ThemeCardPreset | undefined {
+function buildCards(doc: Dict, report: ImportReport): { light: ThemeCardPreset; dark: ThemeCardPreset } | undefined {
   const schemes = asDict(doc.preset_color_schemes);
   const names = Object.keys(schemes);
   if (names.length === 0) {
@@ -132,18 +132,25 @@ function buildCard(doc: Dict, report: ImportReport): ThemeCardPreset | undefined
   const lightName = names.includes("light") ? "light" : names[0];
   const darkName = names.includes("dark") ? "dark" : names.find((name) => name !== lightName) ?? lightName;
   if (!names.includes("light") || !names.includes("dark")) {
-    report.needsReview.push(`preset_color_schemes 使用非 light/dark 名称（${names.join(", ")}），已映射为 light/dark；原始 scheme 保留在 passthrough。`);
+    report.needsReview.push(`preset_color_schemes 使用非 light/dark 名称（${names.join(", ")}），已映射为浅色/深色方案；原始 scheme 保留在 passthrough。`);
   }
+  const base = text(doc.name) || "Imported";
+  const cardFor = (variant: "light" | "dark", schemeName: string): ThemeCardPreset => {
+    const scheme = asDict(schemes[schemeName]);
+    const suffix = variant === "light" ? "Light" : "Dark";
+    return {
+      kind: "theme-card",
+      id: `imported-card-${slug(base)}-${variant}`,
+      name: text(scheme.name) || `${base} ${suffix}`,
+      version: 1,
+      builtin: false,
+      appearance: variant,
+      ...variantOf(scheme),
+    };
+  };
   return {
-    kind: "theme-card",
-    id: `imported-card-${slug(text(doc.name) || "theme")}`,
-    name: `${text(doc.name) || "Imported"} card`,
-    version: 1,
-    builtin: false,
-    variants: {
-      light: variantOf(asDict(schemes[lightName])),
-      dark: variantOf(asDict(schemes[darkName])),
-    },
+    light: cardFor("light", lightName),
+    dark: cardFor("dark", darkName),
   };
 }
 
@@ -509,7 +516,7 @@ export function importTrimeYaml(
   const presetKeyboards = asDict(doc.preset_keyboards);
   const opts = { themeCard: true, interface: true, keyboards: "all" as "all" | "main", calibrateRows: false, ...options };
 
-  const card = opts.themeCard ? buildCard(doc, report) : undefined;
+  const cards = opts.themeCard ? buildCards(doc, report) : undefined;
   if (!opts.themeCard) report.dropped.push("preset_color_schemes（未启用 themeCard 导入）");
   const { macros, byToken, rawPresetKeys, macroPassthrough, rawTokens } = importMacros(doc, report);
 
@@ -600,8 +607,9 @@ export function importTrimeYaml(
   project.macros = macros;
   project.customPresetKeys = rawPresetKeys;
   project.keyStyles = defaultKeyStyles();
-  if (card) {
-    project.theme = card;
+  if (cards) {
+    project.theme = { light: cards.light, dark: cards.dark };
+    project.customThemeCards = [structuredClone(cards.light), structuredClone(cards.dark)];
     const hasDark = Object.prototype.hasOwnProperty.call(asDict(doc.preset_color_schemes), "dark");
     project.variant = hasDark ? "dark" : "light";
   }
@@ -677,7 +685,7 @@ export function importTrimeYaml(
     report.mapped.push("fallback_colors");
   }
 
-  const summary = `已导入 ${importedLayouts.length} 个键盘、${macros.length} 个宏${card ? "、1 张色卡" : ""}${opts.interface ? "、界面配置" : ""}。`;
+  const summary = `已导入 ${importedLayouts.length} 个键盘、${macros.length} 个宏${cards ? "、浅色/深色 2 个方案" : ""}${opts.interface ? "、界面配置" : ""}。`;
   report.mapped.unshift(summary);
   return { project, warnings, report };
 }

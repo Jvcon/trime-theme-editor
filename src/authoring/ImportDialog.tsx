@@ -63,7 +63,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
                 checked={options.themeCard !== false}
                 onChange={(event) => setOptions((current) => ({ ...current, themeCard: event.target.checked }))}
               />
-              导入 preset_color_schemes 为一张可编辑色卡
+              导入 preset_color_schemes 为浅色/深色两个可编辑方案
             </label>
             <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
               <input

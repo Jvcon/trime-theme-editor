@@ -1,19 +1,19 @@
 import YAML from "yaml";
-import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ProjectMetrics, ThemeCardPreset, ToolbarButton, Variant, WindowConfig } from "./types";
-import { defaultChrome, defaultKeyStyles, normalizeBundle, normalizeChrome } from "./utils";
+import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, WindowConfig } from "./types";
+import { defaultChrome, defaultKeyStyles, defaultThemeSelection, normalizeBundle, normalizeChrome } from "./utils";
+import { mergeMetrics, resolveLayoutForDevice } from "./resolve";
 import { BUILTIN_PRESETS } from "./presets";
 
-const PREFIX: Record<string, string> = {
+/**
+ * Trime only recognises these scheme styles. Everything else is applied as a
+ * per-key colour override in preset_keyboards, which is why non-default roles
+ * follow the preview direction instead of the light/dark scheme.
+ */
+const SCHEME_PREFIX = {
   default: "key",
-  modifier: "modifier",
-  enter: "enter",
-  space: "space",
   off: "off_key",
-};
-
-function prefixFor(styleId: string) {
-  return PREFIX[styleId] ?? `style_${styleId.replace(/[^A-Za-z0-9_]/g, "_")}`;
-}
+  on: "on_key",
+} as const;
 
 /** Trime writes colours as 0xAARRGGBB; accept #RRGGBB authoring tokens. */
 export function normalizeColor(value: string | undefined): string {
@@ -24,11 +24,11 @@ export function normalizeColor(value: string | undefined): string {
   return trimmed;
 }
 
-function color(variant: ThemeCardPreset["variants"][Variant], token: string | undefined): string {
+function color(card: ThemeCardPreset, token: string | undefined): string {
   if (!token) return "";
   const [group, key] = token.includes(".") ? token.split(".", 2) : ["tokens", token];
-  if (group === "tokens") return normalizeColor(variant.tokens[key]);
-  return normalizeColor(variant.states[group]?.[key] ?? variant.tokens[token]);
+  if (group === "tokens") return normalizeColor(card.tokens[key]);
+  return normalizeColor(card.states[group]?.[key] ?? card.tokens[token]);
 }
 
 type ResolvedStyle = {
@@ -42,23 +42,22 @@ type ResolvedStyle = {
   hilitedBorder: string;
 };
 
-function resolveStyle(variant: ThemeCardPreset["variants"][Variant], style: KeyStyle): ResolvedStyle {
+function resolveStyle(card: ThemeCardPreset, style: KeyStyle): ResolvedStyle {
   const pressed = style.pressed ?? {};
   return {
-    back: color(variant, style.background),
-    text: color(variant, style.text),
-    symbol: color(variant, style.symbol ?? style.text),
-    border: color(variant, style.border ?? style.background),
-    hilitedBack: color(variant, pressed.background) || color(variant, "pressed.surface") || color(variant, style.background),
-    hilitedText: color(variant, pressed.text) || color(variant, "pressed.text") || color(variant, style.text),
-    hilitedSymbol: color(variant, pressed.symbol) || color(variant, style.symbol ?? style.text),
-    hilitedBorder: color(variant, pressed.border) || color(variant, style.border ?? style.background),
+    back: color(card, style.background),
+    text: color(card, style.text),
+    symbol: color(card, style.symbol ?? style.text),
+    border: color(card, style.border ?? style.background),
+    hilitedBack: color(card, pressed.background) || color(card, "pressed.surface") || color(card, style.background),
+    hilitedText: color(card, pressed.text) || color(card, "pressed.text") || color(card, style.text),
+    hilitedSymbol: color(card, pressed.symbol) || color(card, style.symbol ?? style.text),
+    hilitedBorder: color(card, pressed.border) || color(card, style.border ?? style.background),
   };
 }
 
-function styleColors(variant: ThemeCardPreset["variants"][Variant], style: KeyStyle) {
-  const prefix = prefixFor(style.id);
-  const resolved = resolveStyle(variant, style);
+function schemeStyleColors(card: ThemeCardPreset, style: KeyStyle, prefix: string) {
+  const resolved = resolveStyle(card, style);
   return {
     [`${prefix}_back_color`]: resolved.back,
     [`${prefix}_text_color`]: resolved.text,
@@ -71,49 +70,42 @@ function styleColors(variant: ThemeCardPreset["variants"][Variant], style: KeySt
   };
 }
 
-function buildScheme(card: ThemeCardPreset, variantName: Variant, keyStyles: Record<string, KeyStyle>) {
-  const variant = card.variants[variantName];
+function buildScheme(card: ThemeCardPreset, keyStyles: Record<string, KeyStyle>) {
   const tokens: Record<string, string> = {
-    back_color: color(variant, "bg"),
-    text_color: color(variant, "text"),
-    candidate_text_color: color(variant, "text"),
-    comment_text_color: color(variant, "textMuted"),
-    border_color: color(variant, "border"),
-    label_color: color(variant, "textMuted"),
-    candidate_background: color(variant, "surface"),
-    keyboard_background: color(variant, "surface"),
-    root_background: color(variant, "bg"),
-    liquid_keyboard_background: color(variant, "surface"),
+    back_color: color(card, "bg"),
+    text_color: color(card, "text"),
+    candidate_text_color: color(card, "text"),
+    comment_text_color: color(card, "textMuted"),
+    border_color: color(card, "border"),
+    label_color: color(card, "textMuted"),
+    candidate_background: color(card, "surface"),
+    keyboard_background: color(card, "surface"),
+    root_background: color(card, "bg"),
+    liquid_keyboard_background: color(card, "surface"),
     shadow_color: "0x33000000",
-    long_text_color: color(variant, "text"),
-    long_text_back_color: color(variant, "surface"),
-    preview_back_color: color(variant, "surface"),
-    preview_text_color: color(variant, "text"),
-    popup_back_color: color(variant, "surface"),
-    popup_text_color: color(variant, "text"),
-    popup_border_color: color(variant, "border"),
+    long_text_color: color(card, "text"),
+    long_text_back_color: color(card, "surface"),
+    preview_back_color: color(card, "surface"),
+    preview_text_color: color(card, "text"),
+    popup_back_color: color(card, "surface"),
+    popup_text_color: color(card, "text"),
+    popup_border_color: color(card, "border"),
   };
 
-  for (const style of Object.values(keyStyles)) {
-    Object.assign(tokens, styleColors(variant, style));
-  }
-  const fallback = keyStyles.default ?? Object.values(keyStyles)[0];
-  if (fallback) {
-    const prefix = prefixFor(fallback.id);
-    tokens.key_back_color = tokens[`${prefix}_back_color`] ?? tokens.key_back_color;
-    tokens.key_text_color = tokens[`${prefix}_text_color`] ?? tokens.key_text_color;
-    tokens.key_symbol_color = tokens[`${prefix}_symbol_color`] ?? tokens.key_symbol_color;
-    tokens.key_border_color = tokens[`${prefix}_border_color`] ?? tokens.key_border_color;
-    tokens.hilited_key_back_color = tokens[`hilited_${prefix}_back_color`] ?? tokens.hilited_key_back_color;
-    tokens.hilited_key_text_color = tokens[`hilited_${prefix}_text_color`] ?? tokens.hilited_key_text_color;
-    tokens.hilited_key_symbol_color = tokens[`hilited_${prefix}_symbol_color`] ?? tokens.hilited_key_symbol_color;
-    tokens.hilited_key_border_color = tokens[`hilited_${prefix}_border_color`] ?? tokens.hilited_key_border_color;
-  }
-  if (!tokens.off_key_back_color) tokens.off_key_back_color = color(variant, "surfaceAlt");
-  if (!tokens.off_key_text_color) tokens.off_key_text_color = color(variant, "textMuted");
-  if (!tokens.off_key_symbol_color) tokens.off_key_symbol_color = color(variant, "textMuted");
-  if (!tokens.off_key_border_color) tokens.off_key_border_color = color(variant, "border");
-  return { name: `${card.name} ${variantName}`, author: "trime-theme-editor", ...tokens } as Record<string, unknown>;
+  // Only emit Trime's fixed scheme styles. modifier / enter / space / custom
+  // styles are compiled as per-key colours by compileKey instead.
+  const defaultStyle = keyStyles.default ?? Object.values(keyStyles)[0];
+  if (defaultStyle) Object.assign(tokens, schemeStyleColors(card, defaultStyle, SCHEME_PREFIX.default));
+  const offStyle = keyStyles.off;
+  if (offStyle) Object.assign(tokens, schemeStyleColors(card, offStyle, SCHEME_PREFIX.off));
+  const onStyle = keyStyles.on;
+  if (onStyle) Object.assign(tokens, schemeStyleColors(card, onStyle, SCHEME_PREFIX.on));
+
+  if (!tokens.off_key_back_color) tokens.off_key_back_color = color(card, "surfaceAlt");
+  if (!tokens.off_key_text_color) tokens.off_key_text_color = color(card, "textMuted");
+  if (!tokens.off_key_symbol_color) tokens.off_key_symbol_color = color(card, "textMuted");
+  if (!tokens.off_key_border_color) tokens.off_key_border_color = color(card, "border");
+  return { name: card.name, author: "trime-theme-editor", ...tokens } as Record<string, unknown>;
 }
 
 function clean(input: Record<string, unknown>): Record<string, unknown> {
@@ -271,15 +263,6 @@ function sanitizeId(value: string) {
   return value.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
-function mergeMetrics(base: ProjectMetrics | undefined, override: Partial<ProjectMetrics> | undefined): ProjectMetrics {
-  const output: ProjectMetrics = { ...(base ?? {}) };
-  for (const key of Object.keys(override ?? {}) as Array<keyof ProjectMetrics>) {
-    const value = override?.[key];
-    if (value !== undefined) output[key] = value;
-  }
-  return output;
-}
-
 function actionToken(action: ActionRef | undefined, macroKeyOf: (id: string) => string): string | undefined {
   if (!action) return undefined;
   if (action.kind === "char") return action.value;
@@ -297,7 +280,7 @@ function compileKey(
   slot: KeySlot,
   rowHeight: number | undefined,
   first: boolean,
-  variant: ThemeCardPreset["variants"][Variant],
+  card: ThemeCardPreset,
   keyStyles: Record<string, KeyStyle>,
   macroKeyOf: (id: string) => string,
 ) {
@@ -321,7 +304,7 @@ function compileKey(
   if (slot.style && slot.style !== "default") {
     const style = keyStyles[slot.style] ?? keyStyles.default;
     if (style) {
-      const resolved = resolveStyle(variant, style);
+      const resolved = resolveStyle(card, style);
       key.key_back_color = resolved.back;
       key.key_text_color = resolved.text;
       key.key_symbol_color = resolved.symbol;
@@ -352,7 +335,7 @@ const KEY_COLOR_FIELDS = [
 
 function compileLayout(
   layout: LayoutPreset,
-  variant: ThemeCardPreset["variants"][Variant],
+  card: ThemeCardPreset,
   keyStyles: Record<string, KeyStyle>,
   macroKeyOf: (id: string) => string,
 ) {
@@ -363,7 +346,7 @@ function compileLayout(
         keys.push({ ...(slot.passthrough ?? {}), width: Number((slot.width ?? 10).toFixed(3)) });
         return;
       }
-      keys.push(compileKey(slot, row.height, index === 0, variant, keyStyles, macroKeyOf));
+      keys.push(compileKey(slot, row.height, index === 0, card, keyStyles, macroKeyOf));
     });
   }
   const firstHeight = layout.rows[0]?.height;
@@ -388,7 +371,7 @@ export function stringifyTrime(value: unknown): string {
 }
 
 /**
- * Compiles a v2 bundle into one trime.yaml for a device profile. The bundle
+ * Compiles a v3 bundle into one trime.yaml for a device profile. The bundle
  * is the only source of presets: there is no fallback to built-in libraries
  * here. All layouts in the bundle are compiled so device overrides and schema
  * aliases can reference them.
@@ -396,12 +379,12 @@ export function stringifyTrime(value: unknown): string {
 export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   const bundle = normalizeBundle(input);
   const device = bundle.devices.find((item) => item.id === deviceId) ?? bundle.devices[0];
-  const card = bundle.theme;
-  const variant = card.variants[bundle.variant] ?? card.variants.light;
-  const overrideMainId = device?.mainLayoutId && bundle.layouts.some((item) => item.id === device.mainLayoutId)
-    ? device.mainLayoutId
-    : bundle.mainLayoutId;
-  const layout = bundle.layouts.find((item) => item.id === overrideMainId) ?? bundle.layouts[0];
+  const lightCard = bundle.theme.light;
+  const darkCard = bundle.theme.dark;
+  // Layout key colors are baked into preset_keyboards; they follow the preview
+  // direction. The light/dark schemes themselves use their own cards.
+  const previewCard = bundle.theme[bundle.variant] ?? darkCard;
+  const layout = resolveLayoutForDevice(bundle, device) ?? bundle.layouts[0];
   const layouts = bundle.layouts;
   // Bundle macros are the selected set. References to macros that are not in
   // the bundle are reported by the Export panel validation instead of being
@@ -427,16 +410,23 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
 
   const presetKeyboards: Record<string, unknown> = {};
-  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, variant, bundle.keyStyles, macroKeyOf);
+  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, previewCard, bundle.keyStyles, macroKeyOf);
   if (layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
   // Schema bindings emit alias keyboards that import an existing keyset.
+  // Landscape devices import the landscape variant when one exists.
+  const aliasTarget = (id: string) => {
+    if (device?.orientation !== "landscape") return id;
+    const base = bundle.layouts.find((item) => item.id === id);
+    if (!base?.landscapeId) return id;
+    return bundle.layouts.some((item) => item.id === base.landscapeId) ? base.landscapeId : id;
+  };
   const aliases: string[] = [];
   for (const binding of bundle.schemaBindings) {
     if (!binding.layoutId || !layouts.some((item) => item.id === binding.layoutId)) continue;
     const alias = binding.alias?.trim() || `schema_${sanitizeId(binding.schemaId || binding.layoutId)}`;
     if (alias === "default" || Object.prototype.hasOwnProperty.call(presetKeyboards, alias)) continue;
-    presetKeyboards[alias] = { import_preset: binding.layoutId };
+    presetKeyboards[alias] = { import_preset: aliasTarget(binding.layoutId) };
     aliases.push(alias);
   }
 
@@ -511,8 +501,8 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
     fallback_colors: fallbackColors,
     preset_color_schemes: {
       ...extraSchemes,
-      light: mergeScheme(rawLight, buildScheme(card, "light", bundle.keyStyles)),
-      dark: mergeScheme(rawDark, { ...buildScheme(card, "dark", bundle.keyStyles), light_scheme: "light" }),
+      light: mergeScheme(rawLight, buildScheme(lightCard, bundle.keyStyles)),
+      dark: mergeScheme(rawDark, { ...buildScheme(darkCard, bundle.keyStyles), light_scheme: "light" }),
     },
     preset_keys: presetKeys,
     preset_keyboards: presetKeyboards,
@@ -539,15 +529,16 @@ export function defaultBundle(): ProjectBundle {
     .map((item) => structuredClone(item));
   return {
     format: "trime-theme-bundle",
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: "default",
     meta: { name: "My Trime Theme", author: "trime-theme-editor", description: "", configVersion: "3.0" },
     devices: [{ id: "phone", kind: "phone", orientation: "portrait" }],
     schemaBindings: [],
     mainLayoutId: main.id,
     pageIds: pages.map((item) => item.id),
-    theme: structuredClone(BUILTIN_PRESETS.themeCards.find((item) => item.id === "dracula") ?? BUILTIN_PRESETS.themeCards[0]),
+    theme: defaultThemeSelection(),
     variant: "dark",
+    customThemeCards: [],
     keyStyles: defaultKeyStyles(),
     layouts: [main, ...pages],
     macros,

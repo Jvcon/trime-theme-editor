@@ -22,24 +22,36 @@ describe("compileBundle", () => {
   it("compiles only from the embedded theme", () => {
     const bundle = defaultBundle();
     bundle.variant = "dark";
-    bundle.theme.variants.dark.tokens.primary = "#123456";
+    bundle.theme.dark.tokens.primary = "#123456";
     expect(compileBundle(bundle)).toContain("0xFF123456");
   });
 
-  it("keeps only the main layout and referenced pages", () => {
+  it("prunes unused built-in layouts but keeps authored ones", () => {
     const bundle = defaultBundle();
     bundle.layouts.push({
       kind: "layout",
-      id: "unused",
-      name: "Unused",
+      id: "unused-builtin",
+      name: "Unused built-in",
       version: 1,
-      builtin: false,
+      builtin: true,
       pageRole: "number",
       rows: [],
     });
     const normalized = normalizeBundle(bundle);
     expect(normalized.layouts.map((layout) => layout.id)).toEqual(["qwerty26", "number", "symbols"]);
     expect(normalized.pageIds).toEqual(["number", "symbols"]);
+
+    const authored = normalizeBundle(defaultBundle());
+    authored.layouts.push({
+      kind: "layout",
+      id: "authored",
+      name: "Authored",
+      version: 1,
+      builtin: false,
+      pageRole: "number",
+      rows: [],
+    });
+    expect(normalizeBundle(authored).layouts.map((layout) => layout.id)).toContain("authored");
   });
 });
 

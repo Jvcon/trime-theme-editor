@@ -1,5 +1,6 @@
 import { BUILTIN_PRESETS, DEFAULT_LIQUID, DEFAULT_PREEDIT, DEFAULT_TOOLBAR, DEFAULT_WINDOW, KEY_STYLES } from "./presets";
-import type { ActionRef, ChromeConfig, ChromePatch, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset } from "./types";
+import { LAYOUT_RULES } from "./devicePresets";
+import type { ActionRef, ChromeConfig, ChromePatch, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
 
 function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
   const seen = new Set<string>();
@@ -20,7 +21,11 @@ function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
  */
 export function libraries(bundle: ProjectBundle): PresetLibraries {
   return {
-    themeCards: mergeById([bundle.theme], BUILTIN_PRESETS.themeCards),
+    themeCards: mergeById(
+      [bundle.theme.light, bundle.theme.dark],
+      bundle.customThemeCards ?? [],
+      BUILTIN_PRESETS.themeCards,
+    ),
     layouts: mergeById(bundle.layouts, BUILTIN_PRESETS.layouts),
     macros: mergeById(bundle.macros, BUILTIN_PRESETS.macros),
   };
@@ -143,6 +148,22 @@ export function pruneBundleLayouts(bundle: ProjectBundle): void {
   for (const binding of bundle.schemaBindings ?? []) {
     if (binding.layoutId) keep.add(binding.layoutId);
   }
+  // Landscape variants are referenced by their base layout, not by pages or
+  // devices directly; keep them or every prune would delete the variant.
+  for (const layout of bundle.layouts) {
+    if (layout.landscapeId && keep.has(layout.id)) keep.add(layout.landscapeId);
+  }
+  // Never auto-delete layouts the author created or edited. Switching the main
+  // layout, changing a device, etc. must not discard the previous custom work.
+  // Explicit actions (delete layout / remove page) filter them out before this.
+  const authored = new Set<string>(bundle.layouts.filter((item) => !item.builtin).map((item) => item.id));
+  for (const layout of bundle.layouts) {
+    if (!layout.landscapeId) continue;
+    if (authored.has(layout.id)) authored.add(layout.landscapeId);
+    if (authored.has(layout.landscapeId)) authored.add(layout.id);
+  }
+  for (const id of authored) keep.add(id);
+
   const extras = bundle.layouts.filter((item) => keep.has(item.id) && item.id !== main.id && !bundle.pageIds.includes(item.id));
   bundle.layouts = [main, ...pages, ...extras];
 }
@@ -182,8 +203,124 @@ function normalizeDevices(input: ProjectBundle["devices"] | undefined): ProjectB
   return output.length > 0 ? output : [{ id: "phone", kind: "phone", orientation: "portrait" }];
 }
 
-function fallbackTheme(): ThemeCardPreset {
-  return structuredClone(BUILTIN_PRESETS.themeCards[0]);
+export const REQUIRED_THEME_TOKENS = [
+  "bg", "surface", "surfaceAlt", "border", "text", "textMuted",
+  "primary", "onPrimary", "accent", "danger", "success", "warning",
+] as const;
+
+type LegacyThemeVariant = {
+  tokens: Record<string, string>;
+  states: Record<string, Record<string, string>>;
+};
+
+type LegacyThemeCard = {
+  kind?: "theme-card";
+  id: string;
+  name: string;
+  version?: number;
+  builtin?: boolean;
+  variants: Partial<Record<"light" | "dark", LegacyThemeVariant>>;
+};
+
+function builtinTheme(id: string, appearance: "light" | "dark"): ThemeCardPreset {
+  const found = BUILTIN_PRESETS.themeCards.find((card) => card.id === id)
+    ?? BUILTIN_PRESETS.themeCards.find((card) => card.appearance === appearance)
+    ?? BUILTIN_PRESETS.themeCards[0];
+  return structuredClone(found);
+}
+
+export function defaultThemeSelection(): ThemeSelection {
+  return {
+    light: builtinTheme("alucard", "light"),
+    dark: builtinTheme("dracula", "dark"),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isLegacyThemeCard(value: unknown): value is LegacyThemeCard {
+  return isRecord(value) && isRecord(value.variants);
+}
+
+function isThemeCard(value: unknown): value is ThemeCardPreset {
+  return isRecord(value) && isRecord(value.tokens) && isRecord(value.states);
+}
+
+function sameTokens(left: Record<string, string>, right: Record<string, string>): boolean {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) if (left[key] !== right[key]) return false;
+  return true;
+}
+
+function normalizeCard(value: unknown, fallback: ThemeCardPreset, appearance?: "light" | "dark"): ThemeCardPreset {
+  if (!isThemeCard(value)) return structuredClone(fallback);
+  const id = String(value.id || fallback.id);
+  const known = value.builtin === true
+    ? BUILTIN_PRESETS.themeCards.find((item) => item.id === id)
+    : undefined;
+  const resolvedAppearance = value.appearance === "light" || value.appearance === "dark"
+    ? value.appearance
+    : known?.appearance ?? appearance;
+  const family = typeof value.family === "string" && value.family ? value.family : known?.family;
+  return {
+    kind: "theme-card",
+    id,
+    name: String(value.name || fallback.name),
+    version: 1,
+    builtin: value.builtin === true,
+    ...(resolvedAppearance ? { appearance: resolvedAppearance } : {}),
+    ...(family ? { family } : {}),
+    tokens: { ...structuredClone(fallback.tokens), ...structuredClone(value.tokens) },
+    states: { ...structuredClone(fallback.states), ...structuredClone(value.states) },
+  };
+}
+
+function splitLegacyVariant(legacy: LegacyThemeCard, variant: "light" | "dark"): ThemeCardPreset {
+  const colorSet = legacy.variants[variant] ?? legacy.variants[variant === "light" ? "dark" : "light"];
+  const fallback = builtinTheme(variant === "light" ? "alucard" : "dracula", variant);
+  if (!colorSet) return fallback;
+  const matched = BUILTIN_PRESETS.themeCards.find((card) => sameTokens(card.tokens, colorSet.tokens));
+  if (matched) return { ...structuredClone(matched), appearance: matched.appearance ?? variant };
+  return {
+    kind: "theme-card",
+    id: `split-${legacy.id || "theme"}-${variant}`,
+    name: `${legacy.name || "Theme"} ${variant === "light" ? "Light" : "Dark"}`,
+    version: 1,
+    builtin: false,
+    appearance: variant,
+    tokens: structuredClone(colorSet.tokens),
+    states: structuredClone(colorSet.states),
+  };
+}
+
+function normalizeTheme(input: unknown): { theme: ThemeSelection; custom: ThemeCardPreset[] } {
+  const fallback = defaultThemeSelection();
+  if (!input) return { theme: fallback, custom: [] };
+
+  if (isLegacyThemeCard(input)) {
+    const light = splitLegacyVariant(input, "light");
+    const dark = splitLegacyVariant(input, "dark");
+    const custom = [light, dark].filter((card) => !card.builtin);
+    return { theme: { light, dark }, custom };
+  }
+
+  // A bare card is malformed but easy to recover: use it for both directions.
+  if (isThemeCard(input)) {
+    const light = normalizeCard(input, fallback.light, "light");
+    const dark = normalizeCard(input, fallback.dark, "dark");
+    return { theme: { light, dark }, custom: [] };
+  }
+
+  const candidate = isRecord(input) ? input : {};
+  return {
+    theme: {
+      light: normalizeCard(candidate.light, fallback.light, "light"),
+      dark: normalizeCard(candidate.dark, fallback.dark, "dark"),
+    },
+    custom: [],
+  };
 }
 
 function fallbackLayouts(): LayoutPreset[] {
@@ -191,13 +328,13 @@ function fallbackLayouts(): LayoutPreset[] {
 }
 
 /**
- * Normalizes a v2 bundle in place and returns it. No v1 migration exists by
- * design: this project has no production data to preserve.
+ * Normalizes a v2 or v3 bundle in place and returns it. v2 cards held a
+ * light/dark pair; v3 splits them into independent single-scheme cards.
  */
 export function normalizeBundle(input: ProjectBundle): ProjectBundle {
   const bundle = structuredClone(input);
   bundle.format = "trime-theme-bundle";
-  bundle.schemaVersion = 2;
+  bundle.schemaVersion = 3;
   bundle.id = bundle.id || "trime-theme";
   bundle.meta = {
     ...bundle.meta,
@@ -205,11 +342,34 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
     author: bundle.meta?.author || "",
     configVersion: bundle.meta?.configVersion || "3.0",
   };
-  bundle.theme = bundle.theme ?? fallbackTheme();
+  const normalizedTheme = normalizeTheme((input as unknown as { theme?: unknown }).theme);
+  bundle.theme = normalizedTheme.theme;
   bundle.variant = bundle.variant === "light" ? "light" : "dark";
+
+  // Keep project-scoped custom cards, plus any custom card used by a slot.
+  const custom = new Map<string, ThemeCardPreset>();
+  for (const card of [...(Array.isArray(input.customThemeCards) ? input.customThemeCards : []), ...normalizedTheme.custom]) {
+    if (!isThemeCard(card) || card.builtin === true) continue;
+    const normalized = normalizeCard(card, card, card.appearance);
+    custom.set(normalized.id, normalized);
+  }
+  for (const card of [bundle.theme.light, bundle.theme.dark]) {
+    if (card.builtin) continue;
+    if (!custom.has(card.id)) custom.set(card.id, structuredClone(card));
+  }
+  bundle.customThemeCards = [...custom.values()];
+
   bundle.keyStyles = bundle.keyStyles ?? defaultKeyStyles();
   bundle.macros = Array.isArray(bundle.macros) ? bundle.macros : [];
   bundle.layouts = Array.isArray(bundle.layouts) && bundle.layouts.length > 0 ? bundle.layouts : fallbackLayouts();
+  // Landscape variants are an additive, optional field. Drop dangling or
+  // self-referencing ids so the bundle stays self-contained.
+  const layoutIds = new Set(bundle.layouts.map((item) => item.id));
+  for (const layout of bundle.layouts) {
+    if (layout.landscapeId && (layout.landscapeId === layout.id || !layoutIds.has(layout.landscapeId))) {
+      delete layout.landscapeId;
+    }
+  }
   bundle.mainLayoutId = bundle.mainLayoutId || bundle.layouts.find((item) => item.pageRole === "main")?.id || bundle.layouts[0].id;
   bundle.pageIds = (Array.isArray(bundle.pageIds) ? bundle.pageIds : []).filter((id) => id !== bundle.mainLayoutId);
   bundle.devices = normalizeDevices(bundle.devices);
@@ -248,25 +408,25 @@ export function actionLabel(action: ActionRef | undefined, libs?: PresetLibrarie
   }
 }
 
-export function tokenValue(card: ThemeCardPreset, variant: "light" | "dark", token: string | undefined, state = "tokens"): string {
+export function tokenValue(card: ThemeCardPreset, token: string | undefined, state = "tokens"): string {
   if (!token) return "transparent";
   if (state !== "tokens") {
-    const group = card.variants[variant].states[state];
+    const group = card.states[state];
     if (group?.[token]) return group[token];
   }
-  if (card.variants[variant].tokens[token]) return card.variants[variant].tokens[token];
+  if (card.tokens[token]) return card.tokens[token];
   const [group, key] = token.includes(".") ? token.split(".", 2) : ["tokens", token];
-  if (group !== "tokens") return card.variants[variant].states[group]?.[key] ?? card.variants[variant].tokens[token] ?? "transparent";
+  if (group !== "tokens") return card.states[group]?.[key] ?? card.tokens[token] ?? "transparent";
   return "transparent";
 }
 
-export function keyStyleColors(card: ThemeCardPreset, variant: "light" | "dark", keyStyles: Record<string, KeyStyle>, styleId: string) {
+export function keyStyleColors(card: ThemeCardPreset, keyStyles: Record<string, KeyStyle>, styleId: string) {
   const style = keyStyles[styleId] ?? keyStyles.default;
   return {
-    background: tokenValue(card, variant, style.background),
-    text: tokenValue(card, variant, style.text),
-    border: tokenValue(card, variant, style.border ?? style.background),
-    symbol: tokenValue(card, variant, style.symbol ?? style.text),
+    background: tokenValue(card, style.background),
+    text: tokenValue(card, style.text),
+    border: tokenValue(card, style.border ?? style.background),
+    symbol: tokenValue(card, style.symbol ?? style.text),
   };
 }
 
@@ -300,14 +460,56 @@ export function uniqueId(prefix: string, taken: string[]): string {
   return id;
 }
 
+/**
+ * Adds a landscape variant for `base` and returns the new layout id.
+ * The base is embedded first so built-in presets are never mutated.
+ */
+export function addLandscapeVariant(bundle: ProjectBundle, base: LayoutPreset): string | undefined {
+  const embedded = embedLayout(bundle, base);
+  const source = bundle.layouts.find((item) => item.id === embedded.id);
+  if (!source) return undefined;
+  const taken = bundle.layouts.map((item) => item.id);
+  const baseId = `${source.id}${LAYOUT_RULES.landscapeSuffix}`;
+  let id = baseId;
+  let suffix = 2;
+  while (taken.includes(id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  const clone: LayoutPreset = {
+    ...structuredClone(source),
+    id,
+    name: `${source.name} · 横屏`,
+    builtin: false,
+    version: 1,
+  };
+  delete clone.landscapeId;
+  bundle.layouts.push(clone);
+  source.landscapeId = id;
+  pruneBundleLayouts(bundle);
+  return id;
+}
+
+export function removeLandscapeVariant(bundle: ProjectBundle, variantId: string): string | undefined {
+  const owner = bundle.layouts.find((item) => item.landscapeId === variantId);
+  if (!owner) return undefined;
+  delete owner.landscapeId;
+  bundle.layouts = bundle.layouts.filter((item) => item.id !== variantId);
+  pruneBundleLayouts(bundle);
+  return owner.id;
+}
+
 export function cloneLayout(layout: LayoutPreset, name: string): LayoutPreset {
-  return {
+  const clone: LayoutPreset = {
     ...structuredClone(layout),
     id: `custom-${layout.id}-${Date.now()}`,
     name,
     builtin: false,
     version: 1,
   };
+  // A duplicate must not share (or claim) the source's landscape variant.
+  delete clone.landscapeId;
+  return clone;
 }
 
 export function newLayout(name: string): LayoutPreset {
@@ -352,17 +554,17 @@ export function newMacro(name: string): MacroPreset {
 }
 
 export function cloneThemeCard(card: ThemeCardPreset, name: string): ThemeCardPreset {
-  return {
-    ...structuredClone(card),
-    id: `custom-${card.id}-${Date.now()}`,
-    name,
-    builtin: false,
-    version: 1,
-  };
+  const copy = structuredClone(card);
+  copy.id = `custom-${card.id}-${Date.now()}`;
+  copy.name = name;
+  copy.builtin = false;
+  copy.version = 1;
+  // A copy belongs to the "custom" picker group, not the source family.
+  delete copy.family;
+  return copy;
 }
 
-export function newThemeCard(name: string): ThemeCardPreset {
-  const base = BUILTIN_PRESETS.themeCards[0];
+export function newThemeCard(name: string, base = BUILTIN_PRESETS.themeCards[0]): ThemeCardPreset {
   return { ...cloneThemeCard(base, name), id: `custom-card-${Date.now()}` };
 }
 

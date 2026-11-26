@@ -30,94 +30,104 @@ export const KEY_STYLES = {
   },
 } as const;
 
+/**
+ * A theme card is one scheme. The project separately picks a light card and a
+ * dark card, so cards such as Alucard and Dracula can be mixed freely.
+ *
+ * Palette sources:
+ * - Dracula / Alucard: https://github.com/dracula/dracula-theme
+ * - Catppuccin:        https://github.com/catppuccin/catppuccin
+ * - Solarized:         https://github.com/altercation/solarized
+ *
+ * Catppuccin's Squirrel port was used to confirm the four flavours, but the
+ * values here come from the official palette so the Trime tokens stay
+ * consistent across platforms.
+ */
+function themeCard(
+  id: string,
+  name: string,
+  family: string,
+  appearance: "light" | "dark",
+  tokens: Record<string, string>,
+): ThemeCardPreset {
+  return {
+    kind: "theme-card",
+    id,
+    name,
+    version: 1,
+    builtin: true,
+    family,
+    appearance,
+    tokens,
+    states: {
+      hover: { surface: tokens.surfaceAlt },
+      pressed: { surface: tokens.primary, text: tokens.onPrimary },
+      disabled: { surface: tokens.surfaceAlt, text: tokens.textMuted },
+    },
+  };
+}
+
 export const THEME_CARDS: ThemeCardPreset[] = [
-  {
-    kind: "theme-card", id: "dracula", name: "Dracula", version: 1, builtin: true,
-    variants: {
-      light: {
-        tokens: {
-          bg: "#f8f8f2", surface: "#ffffff", surfaceAlt: "#f1f1f1", border: "#d7d7e0",
-          text: "#282a36", textMuted: "#6272a4", primary: "#7c3aed", onPrimary: "#ffffff",
-          accent: "#d63384", danger: "#dc3545", success: "#198754", warning: "#b58105",
-        },
-        states: {
-          hover: { surface: "#f0ecff" },
-          pressed: { surface: "#ddd1ff", text: "#282a36" },
-          disabled: { surface: "#f1f1f1", text: "#9aa0a6" },
-        },
-      },
-      dark: {
-        tokens: {
-          bg: "#282a36", surface: "#44475a", surfaceAlt: "#343746", border: "#6272a4",
-          text: "#f8f8f2", textMuted: "#b8b8c8", primary: "#bd93f9", onPrimary: "#282a36",
-          accent: "#ff79c6", danger: "#ff5555", success: "#50fa7b", warning: "#f1fa8c",
-        },
-        states: {
-          hover: { surface: "#52556b" },
-          pressed: { surface: "#6272a4", text: "#ffffff" },
-          disabled: { surface: "#343746", text: "#6272a4" },
-        },
-      },
-    },
-  },
-  {
-    kind: "theme-card", id: "material", name: "Material", version: 1, builtin: true,
-    variants: {
-      light: {
-        tokens: {
-          bg: "#fafafa", surface: "#ffffff", surfaceAlt: "#f0f0f0", border: "#d0d0d0",
-          text: "#212121", textMuted: "#757575", primary: "#1976d2", onPrimary: "#ffffff",
-          accent: "#e91e63", danger: "#d32f2f", success: "#388e3c", warning: "#f57c00",
-        },
-        states: {
-          hover: { surface: "#e3f2fd" },
-          pressed: { surface: "#bbdefb", text: "#0d47a1" },
-          disabled: { surface: "#f0f0f0", text: "#9e9e9e" },
-        },
-      },
-      dark: {
-        tokens: {
-          bg: "#121212", surface: "#1e1e1e", surfaceAlt: "#2a2a2a", border: "#3d3d3d",
-          text: "#e8e8e8", textMuted: "#a0a0a0", primary: "#90caf9", onPrimary: "#0d47a1",
-          accent: "#f48fb1", danger: "#ef9a9a", success: "#a5d6a7", warning: "#ffcc80",
-        },
-        states: {
-          hover: { surface: "#263238" },
-          pressed: { surface: "#37474f", text: "#ffffff" },
-          disabled: { surface: "#2a2a2a", text: "#6f6f6f" },
-        },
-      },
-    },
-  },
-  {
-    kind: "theme-card", id: "nord", name: "Nord", version: 1, builtin: true,
-    variants: {
-      light: {
-        tokens: {
-          bg: "#eceff4", surface: "#ffffff", surfaceAlt: "#e5e9f0", border: "#d8dee9",
-          text: "#2e3440", textMuted: "#4c566a", primary: "#5e81ac", onPrimary: "#eceff4",
-          accent: "#b48ead", danger: "#bf616a", success: "#a3be8c", warning: "#ebcb8b",
-        },
-        states: {
-          hover: { surface: "#e5e9f0" },
-          pressed: { surface: "#d8dee9", text: "#2e3440" },
-          disabled: { surface: "#e5e9f0", text: "#a0a8b8" },
-        },
-      },
-      dark: {
-        tokens: {
-          bg: "#2e3440", surface: "#3b4252", surfaceAlt: "#434c5e", border: "#4c566a",
-          text: "#eceff4", textMuted: "#d8dee9", primary: "#88c0d0", onPrimary: "#2e3440",
-          accent: "#b48ead", danger: "#bf616a", success: "#a3be8c", warning: "#ebcb8b",
-        },
-        states: {
-          hover: { surface: "#434c5e" },
-          pressed: { surface: "#4c566a", text: "#eceff4" },
-          disabled: { surface: "#434c5e", text: "#7b8494" },
-        },
-      },
-    },
-  },
+  themeCard("dracula", "Dracula", "Dracula", "dark", {
+    bg: "#282a36", surface: "#44475a", surfaceAlt: "#343746", border: "#6272a4",
+    text: "#f8f8f2", textMuted: "#b8b8c8", primary: "#bd93f9", onPrimary: "#282a36",
+    accent: "#ff79c6", danger: "#ff5555", success: "#50fa7b", warning: "#f1fa8c",
+  }),
+  themeCard("alucard", "Alucard", "Dracula", "light", {
+    bg: "#fffbeb", surface: "#f5eedd", surfaceAlt: "#cfcfde", border: "#d8d0bc",
+    text: "#1f1f1f", textMuted: "#6c664b", primary: "#644ac9", onPrimary: "#fffbeb",
+    accent: "#a3144d", danger: "#cb3a2a", success: "#14710a", warning: "#846e15",
+  }),
+  themeCard("catppuccin-latte", "Catppuccin Latte", "Catppuccin", "light", {
+    bg: "#dce0e8", surface: "#eff1f5", surfaceAlt: "#ccd0da", border: "#acb0be",
+    text: "#4c4f69", textMuted: "#6c6f85", primary: "#8839ef", onPrimary: "#dce0e8",
+    accent: "#ea76cb", danger: "#d20f39", success: "#40a02b", warning: "#df8e1d",
+  }),
+  themeCard("catppuccin-frappe", "Catppuccin Frappé", "Catppuccin", "dark", {
+    bg: "#232634", surface: "#303446", surfaceAlt: "#414559", border: "#626880",
+    text: "#c6d0f5", textMuted: "#a5adce", primary: "#ca9ee6", onPrimary: "#232634",
+    accent: "#f4b8e4", danger: "#e78284", success: "#a6d189", warning: "#e5c890",
+  }),
+  themeCard("catppuccin-macchiato", "Catppuccin Macchiato", "Catppuccin", "dark", {
+    bg: "#181926", surface: "#24273a", surfaceAlt: "#363a4f", border: "#5b6078",
+    text: "#cad3f5", textMuted: "#a5adcb", primary: "#c6a0f6", onPrimary: "#181926",
+    accent: "#f5bde6", danger: "#ed8796", success: "#a6da95", warning: "#eed49f",
+  }),
+  themeCard("catppuccin-mocha", "Catppuccin Mocha", "Catppuccin", "dark", {
+    bg: "#11111b", surface: "#1e1e2e", surfaceAlt: "#313244", border: "#585b70",
+    text: "#cdd6f4", textMuted: "#a6adc8", primary: "#cba6f7", onPrimary: "#11111b",
+    accent: "#f5c2e7", danger: "#f38ba8", success: "#a6e3a1", warning: "#f9e2af",
+  }),
+  themeCard("solarized-light", "Solarized Light", "Solarized", "light", {
+    bg: "#fdf6e3", surface: "#eee8d5", surfaceAlt: "#e3dcc8", border: "#d5cdb6",
+    text: "#657b83", textMuted: "#93a1a1", primary: "#268bd2", onPrimary: "#fdf6e3",
+    accent: "#d33682", danger: "#dc322f", success: "#859900", warning: "#b58900",
+  }),
+  themeCard("solarized-dark", "Solarized Dark", "Solarized", "dark", {
+    bg: "#002b36", surface: "#073642", surfaceAlt: "#0e3f4b", border: "#586e75",
+    text: "#93a1a1", textMuted: "#839496", primary: "#268bd2", onPrimary: "#002b36",
+    accent: "#d33682", danger: "#dc322f", success: "#859900", warning: "#b58900",
+  }),
+  themeCard("material-light", "Material Light", "Material", "light", {
+    bg: "#fafafa", surface: "#ffffff", surfaceAlt: "#f0f0f0", border: "#d0d0d0",
+    text: "#212121", textMuted: "#757575", primary: "#1976d2", onPrimary: "#ffffff",
+    accent: "#e91e63", danger: "#d32f2f", success: "#388e3c", warning: "#f57c00",
+  }),
+  themeCard("material-dark", "Material Dark", "Material", "dark", {
+    bg: "#121212", surface: "#1e1e1e", surfaceAlt: "#2a2a2a", border: "#3d3d3d",
+    text: "#e8e8e8", textMuted: "#a0a0a0", primary: "#90caf9", onPrimary: "#0d47a1",
+    accent: "#f48fb1", danger: "#ef9a9a", success: "#a5d6a7", warning: "#ffcc80",
+  }),
+  themeCard("nord-light", "Nord Light", "Nord", "light", {
+    bg: "#eceff4", surface: "#ffffff", surfaceAlt: "#e5e9f0", border: "#d8dee9",
+    text: "#2e3440", textMuted: "#4c566a", primary: "#5e81ac", onPrimary: "#eceff4",
+    accent: "#b48ead", danger: "#bf616a", success: "#a3be8c", warning: "#ebcb8b",
+  }),
+  themeCard("nord-dark", "Nord Dark", "Nord", "dark", {
+    bg: "#2e3440", surface: "#3b4252", surfaceAlt: "#434c5e", border: "#4c566a",
+    text: "#eceff4", textMuted: "#d8dee9", primary: "#88c0d0", onPrimary: "#2e3440",
+    accent: "#b48ead", danger: "#bf616a", success: "#a3be8c", warning: "#ebcb8b",
+  }),
 ];
 
 export const MACROS: MacroPreset[] = [

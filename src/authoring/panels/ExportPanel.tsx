@@ -8,18 +8,18 @@ import YAML from "yaml";
 import { compileBundle, stringifyTrime } from "../compiler";
 import { diffBundles } from "../diff";
 import { buildManifest } from "../manifest";
+import { resolveLayoutForDevice, deviceLabel } from "../resolve";
 import { TRIME_SCHEMA_VERSION, validateTrimeYaml, type SchemaIssue } from "../schema";
 import type { Snapshot } from "../storage";
 import type { ProjectBundle } from "../types";
 import { normalizeBundle, slug } from "../utils";
+import { validateProject } from "../validation";
 
 type Props = {
   project: ProjectBundle;
   snapshots: Snapshot[];
   setMessage: (message: string) => void;
 };
-
-type Issue = { level: "error" | "warning"; message: string };
 
 type DriftFile = {
   name: string;
@@ -38,7 +38,21 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
   const activeDeviceId = device?.id ?? "";
   const yaml = useMemo(() => compileBundle(project, activeDeviceId), [project, activeDeviceId]);
   const schemaIssues = useMemo(() => validateTrimeYaml(yaml), [yaml]);
-  const issues = useMemo(() => validate(project), [project]);
+  const issues = useMemo(() => validateProject(project), [project]);
+  const deviceResults = useMemo(() => project.devices.map((item) => {
+    const deviceYaml = compileBundle(project, item.id);
+    const schema = validateTrimeYaml(deviceYaml);
+    const relevant = issues.filter((issue) => issue.area !== "devices" || issue.message.includes(item.id));
+    return {
+      device: item,
+      yaml: deviceYaml,
+      schema,
+      layout: resolveLayoutForDevice(project, item),
+      errorCount: schema.length + relevant.filter((issue) => issue.level === "error").length,
+      warningCount: relevant.filter((issue) => issue.level === "warning").length,
+    };
+  }), [project, issues]);
+  const readyCount = deviceResults.filter((result) => result.errorCount === 0).length;
   const errors = issues.filter((issue) => issue.level === "error");
   const warnings = issues.filter((issue) => issue.level === "warning");
   const fileName = `${slug(project.meta.name)}-${activeDeviceId || "device"}.yaml`;
@@ -90,6 +104,25 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
     setMessage(`已下载 ${fileName}`);
   };
 
+  const copyDevice = async (id: string, content: string) => {
+    await navigator.clipboard.writeText(content);
+    setMessage(`已复制 ${id} 的 trime.yaml`);
+  };
+
+  const downloadDevice = (id: string, content: string) => {
+    downloadFile(content, `${slug(project.meta.name)}-${id}.yaml`, "text/yaml;charset=utf-8");
+    setMessage(`已下载 ${id} 的 trime.yaml`);
+  };
+
+  const downloadAll = () => {
+    deviceResults.forEach((result, index) => {
+      window.setTimeout(() => {
+        downloadFile(result.yaml, `${slug(project.meta.name)}-${result.device.id}.yaml`, "text/yaml;charset=utf-8");
+      }, index * 350);
+    });
+    setMessage(`开始导出 ${deviceResults.length} 个设备（浏览器可能询问是否允许多文件下载）`);
+  };
+
   const downloadManifest = async () => {
     try {
       const manifest = await buildManifest(project);
@@ -121,48 +154,79 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
   return (
     <div className="h-full overflow-auto p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold">Export trime.yaml</span>
-        <Select className="h-7 w-48" value={activeDeviceId} onChange={(event) => setDeviceId(event.target.value)}>
+        <span className="text-sm font-semibold">检查与导出</span>
+        <Select className="h-7 w-52" value={activeDeviceId} onChange={(event) => setDeviceId(event.target.value)}>
           {project.devices.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.id} · {item.kind}{item.foldState ? `/${item.foldState}` : ""} · {item.orientation}
+              {deviceLabel(item, true)}
             </option>
           ))}
         </Select>
-        <Badge variant="muted">{project.layouts.length} layouts</Badge>
-        <Badge variant="muted">{project.schemaBindings.length} aliases</Badge>
-        <Badge variant="muted">{project.macros.length} macros</Badge>
         <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
-          {errors.length ? `${errors.length} errors` : warnings.length ? `${warnings.length} warnings` : "ready"}
+          {errors.length ? `${errors.length} 个错误` : warnings.length ? `${warnings.length} 个警告` : "项目级检查通过"}
         </Badge>
         <Badge variant={schemaIssues.length ? "danger" : "success"}>
           schema {TRIME_SCHEMA_VERSION} · {schemaIssues.length ? `${schemaIssues.length} errors` : "ok"}
         </Badge>
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex flex-wrap gap-1">
+          <Button size="sm" variant="secondary" onClick={downloadAll}><Download />导出全部</Button>
           <Button size="sm" variant="outline" onClick={() => void downloadManifest()}><Download />Manifest</Button>
-          <Button size="sm" variant="outline" onClick={() => void copy()}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy YAML"}</Button>
-          <Button size="sm" variant="secondary" onClick={download}><Download />Download</Button>
+          <Button size="sm" variant="outline" onClick={() => void copy()}>{copied ? <Check /> : <Copy />}{copied ? "已复制" : "复制当前"}</Button>
+          <Button size="sm" variant="outline" onClick={download}><Download />下载当前</Button>
         </div>
       </div>
 
       <p className="mb-3 text-[10px] text-muted-foreground">
-        每个 device 输出一份完整 <code>trime.yaml</code>；manifest 包含 device、path、sha256、projectHash 和 editorVersion。不会写盘。
+        每个设备输出一份完整 <code>trime.yaml</code>；manifest 包含 device、path、sha256、projectHash 和 editorVersion。不会写盘。
       </p>
 
       <section className="mb-3 rounded-xl border border-border bg-card p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <h3 className="text-xs font-semibold">设备检查</h3>
+          <Badge variant={readyCount === deviceResults.length ? "success" : "warning"}>{readyCount}/{deviceResults.length} 可导出</Badge>
+          <span className="text-[9px] text-muted-foreground">error 会阻断"可导出"状态；warning 不阻断</span>
+          <Button size="sm" variant="ghost" className="ml-auto h-7 text-[10px]" onClick={downloadAll}>全部下载</Button>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          {deviceResults.map((result) => (
+            <div
+              key={result.device.id}
+              className={`rounded-lg border p-2 ${result.errorCount ? "border-red-500/40 bg-red-500/5" : result.warningCount ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-muted/10"}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium">{deviceLabel(result.device, true)}</span>
+                <Badge variant={result.errorCount ? "danger" : result.warningCount ? "warning" : "success"}>
+                  {result.errorCount ? `${result.errorCount} 个错误` : result.warningCount ? `${result.warningCount} 个警告` : "可导出"}
+                </Badge>
+                <div className="ml-auto flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => setDeviceId(result.device.id)}>查看源码</Button>
+                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => void copyDevice(result.device.id, result.yaml)}><Copy />复制</Button>
+                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => downloadDevice(result.device.id, result.yaml)}><Download />下载</Button>
+                </div>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-muted-foreground">
+                <span>布局：<span className="text-foreground">{result.layout?.name ?? "—"}</span>{result.layout && result.layout.id !== result.layout.name ? ` (${result.layout.id})` : ""}</span>
+                <span>schema：{result.schema.length ? `${result.schema.length} errors` : "ok"}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-3 rounded-xl border border-border bg-card p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-xs font-semibold">Diff against snapshot</h3>
+          <h3 className="text-xs font-semibold">与快照对比</h3>
           <Select className="h-7 w-64" value={compareKey} onChange={(event) => setCompareKey(event.target.value)}>
-            <option value="">No snapshot</option>
+            <option value="">不对比</option>
             {snapshots.map((snapshot) => <option key={snapshot.key} value={snapshot.key}>{snapshot.label} · {new Date(snapshot.createdAt).toLocaleString()}</option>)}
           </Select>
-          {compareKey ? <Badge variant={added || removed ? "warning" : "success"}>+{added} / -{removed} lines</Badge> : <span className="text-[10px] text-muted-foreground">在 Basic 里创建快照后可对比</span>}
+          {compareKey ? <Badge variant={added || removed ? "warning" : "success"}>+{added} / -{removed} 行</Badge> : <span className="text-[10px] text-muted-foreground">在项目抽屉里创建快照后可对比</span>}
           {compareKey ? (
             <div className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant={diffView === "yaml" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("yaml")}>YAML lines</Button>
-              <Button size="sm" variant={diffView === "structured" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("structured")}>Structured · {structuredCount}</Button>
-              <Button size="sm" variant="ghost" className="h-7" onClick={() => void copyDiff()}>Copy .md</Button>
-              <Button size="sm" variant="ghost" className="h-7" onClick={() => downloadFile(markdown, `${slug(project.meta.name)}-diff.md`, "text/markdown;charset=utf-8")}>Download .md</Button>
+              <Button size="sm" variant={diffView === "yaml" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("yaml")}>YAML 行</Button>
+              <Button size="sm" variant={diffView === "structured" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("structured")}>结构化 · {structuredCount}</Button>
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => void copyDiff()}>复制 .md</Button>
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => downloadFile(markdown, `${slug(project.meta.name)}-diff.md`, "text/markdown;charset=utf-8")}>下载 .md</Button>
             </div>
           ) : null}
         </div>
@@ -210,7 +274,7 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
 
       <section className="mb-3 rounded-xl border border-border bg-card p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-xs font-semibold">Compare with existing trime.yaml</h3>
+          <h3 className="text-xs font-semibold">更多工具 · 与现有 trime.yaml 对比</h3>
           <span className="text-[10px] text-muted-foreground">归一化后对比当前 device 的生成结果</span>
           <label className="ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded border border-border px-2 text-[10px] hover:bg-muted">
             <Upload className="size-3" /> Compare file
@@ -312,125 +376,6 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
   );
 }
 
-function validate(project: ProjectBundle): Issue[] {
-  const issues: Issue[] = [];
-  const macroIds = new Set(project.macros.map((item) => item.id));
-  const layoutIds = new Set(project.layouts.map((item) => item.id));
-  const sanitize = (value: string) => value.replace(/[^A-Za-z0-9_]/g, "_");
-  const knownPresets = new Set<string>([
-    "Keyboard_main", "Keyboard_default", "liquid_keyboard_exit", "space1", "Return1",
-    "liquid_keyboard_clipboard", ...Object.keys(project.customPresetKeys ?? {}),
-    ...project.macros.map((item) => `macro_${sanitize(item.id)}`),
-  ]);
-  for (const id of [project.mainLayoutId, ...project.pageIds]) knownPresets.add(`Keyboard_${sanitize(id)}`);
-  const liquidTabs = project.chrome?.liquid.tabs ?? [];
-  const tabIds = new Set<string>();
-  for (const tab of liquidTabs) {
-    if (!tab.id) issues.push({ level: "error", message: "liquid tab id 不能为空" });
-    if (tabIds.has(tab.id)) issues.push({ level: "error", message: `liquid tab id 重复：${tab.id}` });
-    tabIds.add(tab.id);
-    knownPresets.add(`liquid_keyboard_${sanitize(tab.id)}`);
-    if (tab.type === "SINGLE" && !tab.keys?.length) {
-      issues.push({ level: "warning", message: `liquid tab ${tab.id} 是 SINGLE 但没有 keys` });
-    }
-    if (tab.type === "SYMBOL" && !tab.symbols?.length) {
-      issues.push({ level: "warning", message: `liquid tab ${tab.id} 是 SYMBOL 但没有 symbols` });
-    }
-  }
-  const toolbarButtons = project.chrome ? [project.chrome.toolbar.primaryButton, ...project.chrome.toolbar.buttons] : [];
-  for (const button of toolbarButtons) {
-    if (button.action.startsWith("liquid_keyboard_") && !knownPresets.has(button.action)) {
-      issues.push({ level: "warning", message: `toolbar 引用了不存在的 liquid action：${button.action}` });
-    }
-  }
-
-  if (!project.layouts.some((item) => item.id === project.mainLayoutId)) {
-    issues.push({ level: "error", message: `主布局不存在：${project.mainLayoutId}` });
-  }
-  for (const id of project.pageIds) {
-    if (!layoutIds.has(id)) issues.push({ level: "error", message: `页面引用的布局不存在：${id}` });
-    if (id === project.mainLayoutId) issues.push({ level: "warning", message: `页面与主布局重复：${id}` });
-  }
-
-  const pageLayouts = [
-    project.layouts.find((item) => item.id === project.mainLayoutId),
-    ...project.pageIds.map((id) => project.layouts.find((item) => item.id === id)),
-  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-  for (const layout of pageLayouts) {
-    layout.rows.forEach((row, rowIndex) => {
-      const sum = row.keys.reduce((total, key) => total + (key.width || 0), 0);
-      if (Math.abs(sum - 100) > 0.5) {
-        issues.push({ level: "warning", message: `${layout.name} 第 ${rowIndex + 1} 行宽度合计 ${sum.toFixed(1)}%，不是 100%（可用 Fit 100% 修正）` });
-      }
-      row.keys.forEach((key, keyIndex) => {
-        if (key.popup?.length && key.long_click) {
-          issues.push({ level: "warning", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键同时有 popup 和 long_click；运行时 popup 优先生效` });
-        }
-        for (const behavior of ["click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right"] as const) {
-          const action = key[behavior];
-          if (action?.kind === "macro" && !macroIds.has(action.id)) {
-            issues.push({ level: "error", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键的 ${behavior} 引用了不存在的宏：${action.id}` });
-          }
-          if (action?.kind === "page" && !layoutIds.has(action.id)) {
-            issues.push({ level: "error", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键的 ${behavior} 引用了不存在的页面：${action.id}` });
-          }
-          if (action?.kind === "preset" && !knownPresets.has(action.value)) {
-            issues.push({ level: "error", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键的 ${behavior} 引用了不存在的 preset_key：${action.value}` });
-          }
-        }
-        if (!key.click && !(key.label === undefined && key.style === "off")) {
-          issues.push({ level: "warning", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键没有 click 行为` });
-        }
-        if (!project.keyStyles[key.style]) {
-          issues.push({ level: "warning", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键引用了不存在的 style type：${key.style}` });
-        }
-      });
-    });
-  }
-
-  const deviceIds = new Set<string>();
-  for (const device of project.devices) {
-    if (deviceIds.has(device.id)) {
-      issues.push({ level: "error", message: `device id 重复：${device.id}` });
-    }
-    deviceIds.add(device.id);
-    if (device.mainLayoutId && !layoutIds.has(device.mainLayoutId)) {
-      issues.push({ level: "error", message: `device ${device.id} 引用了不存在的布局：${device.mainLayoutId}` });
-    }
-  }
-
-  const aliases = new Set<string>();
-  for (const binding of project.schemaBindings) {
-    if (!binding.schemaId.trim()) {
-      issues.push({ level: "warning", message: "schema binding 没有 schema_id" });
-    }
-    if (!layoutIds.has(binding.layoutId)) {
-      issues.push({ level: "error", message: `schema ${binding.schemaId || "(empty)"} 引用了不存在的布局：${binding.layoutId}` });
-    }
-    const alias = binding.alias?.trim() || `schema_${sanitize(binding.schemaId || binding.layoutId)}`;
-    if (alias === "default" || layoutIds.has(alias)) {
-      issues.push({ level: "error", message: `schema alias 与键盘 id 冲突：${alias}` });
-    }
-    if (aliases.has(alias)) {
-      issues.push({ level: "error", message: `schema alias 重复：${alias}` });
-    }
-    aliases.add(alias);
-  }
-
-  const rawKeyboards = project.passthrough?.preset_keyboards;
-  if (rawKeyboards && typeof rawKeyboards === "object" && !Array.isArray(rawKeyboards)) {
-    for (const [id, value] of Object.entries(rawKeyboards as Record<string, unknown>)) {
-      const entry = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-      const target = entry?.import_preset;
-      if (typeof target === "string" && target && !layoutIds.has(target)) {
-        issues.push({ level: "error", message: `preset_keyboards alias ${id} 引用了不存在的布局：${target}` });
-      }
-    }
-  }
-
-  return issues.slice(0, 40);
-}
 
 type DiffOp = { type: "same" | "add" | "remove"; text: string };
 

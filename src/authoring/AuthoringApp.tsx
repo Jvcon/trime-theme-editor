@@ -1,45 +1,158 @@
-import { useEffect, useMemo, useState } from "react";
-import { Boxes, Copy, Download, Save, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Boxes, Copy, Download, Eye, EyeOff, FolderOpen, Redo2, Save, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { compileBundle, defaultBundle } from "./compiler";
 import { deleteProject, deleteSnapshot, importSnapshots, listProjects, listSnapshots, loadProject, saveProject, saveSnapshot, type Snapshot } from "./storage";
-import { BasicPanel } from "./panels/BasicPanel";
+import { AdvancedDrawer } from "./components/AdvancedDrawer";
+import { LandingScreen } from "./components/LandingScreen";
+import { PreviewRail } from "./components/PreviewRail";
+import { ProjectDrawer } from "./components/ProjectDrawer";
+import { Stepper } from "./components/Stepper";
+import type { DropPosition, KeyPosition } from "./components/KeyboardPreview";
+import { stepStatuses, type StepId } from "./flow";
+import { DevicesPanel } from "./panels/DevicesPanel";
 import { ExportPanel } from "./panels/ExportPanel";
-import { LayoutsPanel } from "./panels/LayoutsPanel";
 import { InterfacePanel } from "./panels/InterfacePanel";
+import { LayoutsPanel } from "./panels/LayoutsPanel";
 import { MacrosPanel } from "./panels/MacrosPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { ImportDialog } from "./ImportDialog";
-import type { LayoutPreset, ProjectBundle } from "./types";
+import type { LayoutPreset, Orientation, ProjectBundle } from "./types";
 import { libraries, normalizeBundle, portableBundle, slug } from "./utils";
 
-type Board = "basic" | "layouts" | "themes" | "interface" | "macros" | "export";
+type Board = StepId | "start" | "macros";
 
-const BOARDS: Array<{ id: Board; label: string }> = [
-  { id: "basic", label: "Basic" },
-  { id: "layouts", label: "Layouts" },
-  { id: "themes", label: "Themes" },
-  { id: "interface", label: "Interface" },
-  { id: "macros", label: "Macros" },
-  { id: "export", label: "Export" },
-];
+const STATE_LABEL = {
+  done: "完成",
+  warning: "待确认",
+  error: "有错误",
+  default: "使用默认",
+} as const;
 
 type Props = { open?: boolean; onClose?: () => void };
 
 export function AuthoringApp({ open = true, onClose }: Props) {
   const [project, setProject] = useState<ProjectBundle>(() => defaultBundle());
   const [projects, setProjects] = useState<ProjectBundle[]>([]);
-  const [board, setBoard] = useState<Board>("layouts");
+  const [board, setBoard] = useState<Board>("theme");
   const [activeLayoutId, setActiveLayoutId] = useState(project.mainLayoutId);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [pendingImport, setPendingImport] = useState<{ source: string; fileName: string; resources: Record<string, string> } | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(true);
+  const [previewDeviceId, setPreviewDeviceId] = useState(project.devices[0]?.id ?? "phone");
+  const [previewOrientation, setPreviewOrientation] = useState<Orientation>(project.devices[0]?.orientation ?? "portrait");
+  const [selectedKey, setSelectedKey] = useState<KeyPosition>();
+  const [popupKey, setPopupKey] = useState<KeyPosition>();
+  const [rightTab, setRightTab] = useState("page");
+
+  const projectRef = useRef(project);
+  const historyRef = useRef<ProjectBundle[]>([]);
+  const futureRef = useRef<ProjectBundle[]>([]);
 
   const libs = useMemo(() => libraries(project), [project]);
   const yaml = useMemo(() => compileBundle(project), [project]);
+  const statuses = useMemo(() => stepStatuses(project, { schema: board === "export" }), [project, board]);
+  const currentStatus = statuses.find((status) => status.id === board);
+  const activeLayoutName = libs.layouts.find((item) => item.id === activeLayoutId)?.name;
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  useEffect(() => {
+    setPreviewDeviceId((current) => (
+      project.devices.some((device) => device.id === current) ? current : project.devices[0]?.id ?? ""
+    ));
+  }, [project.devices]);
+
+  const resetHistory = () => {
+    historyRef.current = [];
+    futureRef.current = [];
+  };
+
+  const pushHistory = (snapshot: ProjectBundle) => {
+    historyRef.current.push(structuredClone(snapshot));
+    if (historyRef.current.length > 50) historyRef.current.shift();
+    futureRef.current = [];
+  };
+
+  const commit = (fn: (draft: ProjectBundle) => void) => {
+    const current = projectRef.current;
+    const next = structuredClone(current);
+    fn(next);
+    pushHistory(current);
+    projectRef.current = next;
+    setProject(next);
+    setDirty(true);
+  };
+
+  const adoptProject = (next: ProjectBundle, record: boolean) => {
+    if (record && next.id === projectRef.current.id) pushHistory(projectRef.current);
+    else resetHistory();
+    projectRef.current = next;
+    setProject(next);
+    setActiveLayoutId(next.mainLayoutId);
+    setPreviewDeviceId(next.devices[0]?.id ?? "");
+    setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
+  };
+
+  const undo = () => {
+    const previous = historyRef.current.pop();
+    if (!previous) {
+      setMessage("没有可撤销的操作");
+      return;
+    }
+    futureRef.current.push(structuredClone(projectRef.current));
+    projectRef.current = previous;
+    setProject(previous);
+    setDirty(true);
+    setMessage("已撤销上一步");
+  };
+
+  const redo = () => {
+    const next = futureRef.current.pop();
+    if (!next) {
+      setMessage("没有可重做的操作");
+      return;
+    }
+    historyRef.current.push(structuredClone(projectRef.current));
+    projectRef.current = next;
+    setProject(next);
+    setDirty(true);
+    setMessage("已重做");
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // History refs are stable; the handlers only read refs and set state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const refreshProjects = async (): Promise<ProjectBundle[]> => {
     const items = await listProjects();
@@ -72,9 +185,15 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         setProjects(items);
         if (items[0]) {
           const next = normalizeBundle(items[0]);
+          projectRef.current = next;
           setProject(next);
           setActiveLayoutId(next.mainLayoutId);
+          setPreviewDeviceId(next.devices[0]?.id ?? "");
+          setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
           setMessage(`已打开：${next.meta.name}`);
+          setBoard("theme");
+        } else {
+          setBoard("start");
         }
       } catch (error) {
         if (!cancelled) setMessage(`IndexedDB 不可用：${String(error)}`);
@@ -99,51 +218,97 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, project.id]);
 
-  const mutate = (fn: (draft: ProjectBundle) => void) => {
-    setProject((current) => {
-      const next = structuredClone(current);
-      fn(next);
-      return next;
-    });
-    setDirty(true);
-  };
-
   const editLayout = (id: string, fn: (layout: LayoutPreset) => void) => {
-    const source = libraries(project).layouts.find((item) => item.id === id);
-    const embedded = project.layouts.some((item) => item.id === id);
-    const cloneId = !embedded || source?.builtin ? `custom-${id}-${Date.now()}` : undefined;
-    setProject((current) => {
-      const next = structuredClone(current);
+    const current = projectRef.current;
+    const source = libraries(current).layouts.find((item) => item.id === id);
+    if (!source) return;
+    const embedded = current.layouts.some((item) => item.id === id);
+    const cloneId = !embedded || source.builtin ? `custom-${id}-${Date.now()}` : undefined;
+    commit((next) => {
       const currentSource = libraries(next).layouts.find((item) => item.id === id);
-      if (!currentSource) return next;
+      if (!currentSource) return;
       if (cloneId) {
-        const clone = { ...structuredClone(currentSource), id: cloneId, builtin: false, name: `${currentSource.name}（自定义）` };
+        const clone: LayoutPreset = {
+          ...structuredClone(currentSource),
+          id: cloneId,
+          builtin: false,
+          name: `${currentSource.name}（自定义）`,
+        };
         next.layouts = next.layouts.filter((item) => item.id !== id);
-        next.layouts.push(clone);
         if (next.mainLayoutId === id) next.mainLayoutId = cloneId;
         next.pageIds = next.pageIds.map((pageId) => (pageId === id ? cloneId : pageId));
+        next.devices = next.devices.map((device) => (
+          device.mainLayoutId === id ? { ...device, mainLayoutId: cloneId } : device
+        ));
+        next.schemaBindings = next.schemaBindings.map((binding) => (
+          binding.layoutId === id ? { ...binding, layoutId: cloneId } : binding
+        ));
+        for (const layout of next.layouts) {
+          if (layout.landscapeId === id) layout.landscapeId = cloneId;
+        }
+        next.layouts.push(clone);
         fn(clone);
       } else {
         const target = next.layouts.find((item) => item.id === id);
         if (target) fn(target);
       }
-      return next;
     });
     if (cloneId) setActiveLayoutId(cloneId);
-    setDirty(true);
+  };
+
+  useEffect(() => {
+    if (board !== "layouts") setPopupKey(undefined);
+    if (board === "layouts") setPreviewOpen(true);
+  }, [board]);
+
+  const focusDevice = (id: string) => {
+    const device = projectRef.current.devices.find((item) => item.id === id);
+    if (!device) return;
+    setPreviewDeviceId(device.id);
+    setPreviewOrientation(device.orientation);
+  };
+
+  const selectKey = (position: KeyPosition | undefined) => {
+    setSelectedKey(position);
+    if (position) setRightTab("key");
+  };
+
+  const openPopup = (position: KeyPosition | null) => {
+    setPopupKey(position ?? undefined);
+    if (position) setRightTab("key");
+  };
+
+  const moveKey = (from: KeyPosition, to: DropPosition) => {
+    if (from.row === to.row && (to.index === from.key || to.index === from.key + 1)) return;
+    const layout = libs.layouts.find((item) => item.id === activeLayoutId);
+    if (!layout) return;
+    editLayout(activeLayoutId, (draft) => {
+      const sourceRow = draft.rows[from.row];
+      const targetRow = draft.rows[to.row];
+      if (!sourceRow || !targetRow || !sourceRow.keys[from.key]) return;
+      const [moved] = sourceRow.keys.splice(from.key, 1);
+      let index = to.index;
+      if (sourceRow === targetRow && from.key < to.index) index -= 1;
+      index = Math.max(0, Math.min(index, targetRow.keys.length));
+      targetRow.keys.splice(index, 0, moved);
+    });
+    const nextIndex = from.row === to.row && from.key < to.index ? to.index - 1 : to.index;
+    setSelectedKey({ row: to.row, key: Math.max(0, Math.min(nextIndex, layout.rows[to.row]?.keys.length ?? 0)) });
+    setMessage("已移动键位；注意检查行宽是否仍为 100%");
   };
 
   const save = async () => {
     try {
-      const existing = await loadProject(project.id);
-      if (existing && !sameProject(existing, project)) {
+      const current = projectRef.current;
+      const existing = await loadProject(current.id);
+      if (existing && !sameProject(existing, current)) {
         await saveSnapshot(existing, "Auto · before save");
       }
-      await saveProject(project);
+      await saveProject(current);
       await refreshProjects();
-      await refreshSnapshots(project.id);
+      await refreshSnapshots(current.id);
       setDirty(false);
-      setMessage(`已保存到 IndexedDB：${project.meta.name}`);
+      setMessage(`已保存到 IndexedDB：${current.meta.name}`);
     } catch (error) {
       setMessage(`保存失败：${String(error)}`);
     }
@@ -151,8 +316,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const takeSnapshot = async (label?: string) => {
     try {
-      await saveSnapshot(project, label?.trim() || `Manual · ${new Date().toLocaleString()}`);
-      await refreshSnapshots(project.id);
+      await saveSnapshot(projectRef.current, label?.trim() || `Manual · ${new Date().toLocaleString()}`);
+      await refreshSnapshots(projectRef.current.id);
       setMessage("已创建快照");
     } catch (error) {
       setMessage(`快照失败：${String(error)}`);
@@ -176,12 +341,12 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     const bundle = {
       format: "trime-theme-snapshots",
       version: 2,
-      projectId: project.id,
-      projectName: project.meta.name,
+      projectId: projectRef.current.id,
+      projectName: projectRef.current.meta.name,
       exportedAt: new Date().toISOString(),
       snapshots,
     };
-    downloadText(JSON.stringify(bundle, null, 2), `${slug(project.meta.name)}-snapshots.json`, "application/json;charset=utf-8");
+    downloadText(JSON.stringify(bundle, null, 2), `${slug(projectRef.current.meta.name)}-snapshots.json`, "application/json;charset=utf-8");
     setMessage(`已导出 ${snapshots.length} 个快照`);
   };
 
@@ -191,8 +356,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
       if (parsed.format !== "trime-theme-snapshots" || parsed.version !== 2 || !Array.isArray(parsed.snapshots)) {
         throw new Error("不是 trime-theme-snapshots v2");
       }
-      const count = await importSnapshots(project.id, parsed.snapshots);
-      await refreshSnapshots(project.id);
+      const count = await importSnapshots(projectRef.current.id, parsed.snapshots);
+      await refreshSnapshots(projectRef.current.id);
       setMessage(`已导入 ${count} 个快照（${file.name}）`);
     } catch (error) {
       setMessage(`导入快照包失败：${error instanceof Error ? error.message : String(error)}`);
@@ -201,15 +366,14 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const restoreSnapshot = async (snapshot: Snapshot) => {
     try {
-      if (!sameProject(project, snapshot.project)) {
-        await saveSnapshot(project, "Auto · before restore");
+      if (!sameProject(projectRef.current, snapshot.project)) {
+        await saveSnapshot(projectRef.current, "Auto · before restore");
       }
       const next = normalizeBundle(snapshot.project);
-      setProject(next);
-      setActiveLayoutId(next.mainLayoutId);
+      adoptProject(next, true);
       setDirty(true);
       setMessage(`已恢复快照：${snapshot.label}`);
-      await refreshSnapshots(project.id);
+      await refreshSnapshots(next.id);
     } catch (error) {
       setMessage(`恢复失败：${String(error)}`);
     }
@@ -217,37 +381,50 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const removeSnapshot = async (key: string) => {
     await deleteSnapshot(key);
-    await refreshSnapshots(project.id);
+    await refreshSnapshots(projectRef.current.id);
   };
 
   const createProject = () => {
     const next = defaultBundle();
     next.id = `project-${Date.now()}`;
     next.meta.name = `新主题 ${projects.length + 1}`;
-    setProject(next);
-    setActiveLayoutId(next.mainLayoutId);
-    setBoard("basic");
+    adoptProject(next, false);
     setDirty(true);
-    setMessage("已新建项目（记得 Save）");
+    setBoard("theme");
+    setProjectsOpen(false);
+    setMessage("已新建项目（记得保存）");
   };
 
   const openProject = async (id: string) => {
     const loaded = await loadProject(id);
     if (!loaded) return;
-    setProject(loaded);
-    setActiveLayoutId(loaded.mainLayoutId);
+    const next = normalizeBundle(loaded);
+    resetHistory();
+    projectRef.current = next;
+    setProject(next);
+    setActiveLayoutId(next.mainLayoutId);
+    setPreviewDeviceId(next.devices[0]?.id ?? "");
+    setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
     setDirty(false);
-    setMessage(`已打开：${loaded.meta.name}`);
+    setBoard("theme");
+    setProjectsOpen(false);
+    setMessage(`已打开：${next.meta.name}`);
   };
 
   const removeProject = async (id: string) => {
+    if (!window.confirm("删除这个项目？此操作不可撤销。")) return;
     await deleteProject(id);
     const items = await refreshProjects();
-    if (id === project.id) {
+    if (id === projectRef.current.id) {
       const fallback = items[0] ?? defaultBundle();
+      resetHistory();
+      projectRef.current = fallback;
       setProject(fallback);
       setActiveLayoutId(fallback.mainLayoutId);
+      setPreviewDeviceId(fallback.devices[0]?.id ?? "");
+      setPreviewOrientation(fallback.devices[0]?.orientation ?? "portrait");
       setDirty(!items[0]);
+      setBoard(items[0] ? "theme" : "start");
       await refreshSnapshots(fallback.id);
     }
     setMessage("已删除项目");
@@ -256,14 +433,16 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   const importBundle = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as ProjectBundle;
-      if (parsed.format !== "trime-theme-bundle" || parsed.schemaVersion !== 2 || !parsed.meta || !parsed.theme) {
-        throw new Error("不是 trime-theme-bundle v2");
+      const schemaVersion = (parsed as unknown as { schemaVersion?: number }).schemaVersion;
+      if (parsed.format !== "trime-theme-bundle" || (schemaVersion !== 2 && schemaVersion !== 3) || !parsed.meta || !parsed.theme) {
+        throw new Error("不是 trime-theme-bundle v2/v3");
       }
       const next = normalizeBundle(parsed);
-      setProject(next);
-      setActiveLayoutId(next.mainLayoutId);
+      adoptProject(next, false);
       setDirty(true);
-      setMessage(`已导入 bundle：${file.name}（记得 Save）`);
+      setBoard("theme");
+      setProjectsOpen(false);
+      setMessage(`已导入项目文件：${file.name}（记得保存）`);
     } catch (error) {
       setMessage(`导入失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -278,17 +457,18 @@ export function AuthoringApp({ open = true, onClose }: Props) {
       const [fileName, source] = entries[mainIndex];
       const resources = Object.fromEntries(entries.filter((_, index) => index !== mainIndex));
       setPendingImport({ source, fileName, resources });
+      setProjectsOpen(false);
     } catch (error) {
       setMessage(`读取 YAML 失败：${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   const applyImport = (next: ProjectBundle, warnings: string[]) => {
-    setProject(next);
-    setActiveLayoutId(next.mainLayoutId);
+    adoptProject(next, false);
     setDirty(true);
     setPendingImport(null);
-    setMessage(warnings[0] ?? "已导入 trime.yaml（记得 Save）");
+    setBoard("theme");
+    setMessage(warnings[0] ?? "已导入 trime.yaml（记得保存）");
   };
 
   const downloadText = (content: string, name: string, type = "text/plain;charset=utf-8") => {
@@ -301,7 +481,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     URL.revokeObjectURL(url);
   };
 
-  const exportBundle = () => downloadText(JSON.stringify(portableBundle(project), null, 2), `${project.id}.json`, "application/json;charset=utf-8");
+  const exportBundle = () => downloadText(JSON.stringify(portableBundle(projectRef.current), null, 2), `${projectRef.current.id}.json`, "application/json;charset=utf-8");
 
   const copyYaml = async () => {
     await navigator.clipboard.writeText(yaml);
@@ -312,73 +492,169 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   return (
     <div className={`${onClose ? "fixed inset-0 z-50" : "h-full"} flex flex-col bg-background text-foreground`}>
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/60 px-4">
+      <header className="flex h-14 shrink-0 items-center gap-3 overflow-x-auto border-b border-border bg-card/60 px-4">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-blue-500 to-teal-400 text-slate-950">
           <Boxes className="size-4" />
         </div>
-        <div className="leading-tight">
+        <div className="min-w-0 leading-tight">
           <div className="text-sm font-semibold">Trime Theme Editor</div>
-          <div className="text-[10px] text-muted-foreground">typed presets · compose · export yaml</div>
+          <div className="truncate text-[10px] text-muted-foreground" title={project.meta.name}>
+            {board === "start" ? "从一个模板或现有主题开始" : project.meta.name}
+          </div>
         </div>
 
-        <div className="ml-4 flex items-center gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
-          {BOARDS.map((item) => (
-            <Button key={item.id} size="sm" variant={board === item.id ? "default" : "ghost"} className="h-7" onClick={() => setBoard(item.id)}>
-              {item.label}
-            </Button>
-          ))}
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          {message ? <span className="max-w-64 truncate text-[10px] text-muted-foreground" title={message}>{message}</span> : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          {message ? <span className="hidden max-w-56 truncate text-[10px] text-muted-foreground lg:inline" title={message}>{message}</span> : null}
           <Badge variant={loading ? "muted" : dirty ? "warning" : "success"}>{loading ? "loading" : dirty ? "unsaved" : "saved"}</Badge>
-          <Button size="sm" variant="secondary" onClick={() => void save()}><Save />Save</Button>
+          <Button size="icon" variant="ghost" title="撤销 (Ctrl/Cmd+Z)" onClick={undo}><Undo2 /></Button>
+          <Button size="icon" variant="ghost" title="重做 (Shift+Ctrl/Cmd+Z)" onClick={redo}><Redo2 /></Button>
+          <Button size="sm" variant="secondary" onClick={() => void save()}><Save />保存</Button>
           <Button size="sm" variant="outline" onClick={() => void copyYaml()}><Copy />YAML</Button>
-          <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />Download</Button>
+          <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />下载</Button>
+          <Button size="sm" variant="outline" onClick={() => setProjectsOpen(true)}><FolderOpen />项目</Button>
+          <Button size="sm" variant="outline" onClick={() => setAdvancedOpen(true)}><SlidersHorizontal />高级</Button>
+          {board !== "layouts" ? (
+            <Button size="icon" variant="ghost" className="hidden lg:inline-flex" title={previewOpen ? "收起预览" : "打开预览"} onClick={() => setPreviewOpen((value) => !value)}>
+              {previewOpen ? <EyeOff /> : <Eye />}
+            </Button>
+          ) : null}
           {onClose ? <Button size="icon" variant="ghost" onClick={onClose}><X /></Button> : null}
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-hidden">
-        {board === "basic" ? (
-          <BasicPanel
+      {board !== "start" ? (
+        <Stepper steps={statuses} current={board} onSelect={(id) => setBoard(id)} />
+      ) : null}
+
+      {board !== "start" && currentStatus ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-4 py-1 text-[10px] text-muted-foreground">
+          <Badge
+            variant={currentStatus.state === "error" ? "danger" : currentStatus.state === "warning" ? "warning" : currentStatus.state === "done" ? "success" : "muted"}
+          >
+            {STATE_LABEL[currentStatus.state]}
+          </Badge>
+          <span className="text-foreground">{currentStatus.summary}</span>
+          <span className="truncate">· {currentStatus.reasons[0]}</span>
+          {currentStatus.optional ? <span className="text-[9px]">· 可选，可跳过</span> : null}
+          {board === "layouts" && activeLayoutName ? <span className="ml-auto">正在编辑：{activeLayoutName}</span> : null}
+        </div>
+      ) : null}
+
+      <main className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          {board === "start" ? (
+            <LandingScreen projects={projects} onNew={createProject} onOpen={(id) => void openProject(id)} onImportYaml={(files) => void pickImportYaml(files)} />
+          ) : null}
+          {board === "theme" ? <ThemesPanel project={project} libs={libs} mutate={commit} setMessage={setMessage} /> : null}
+          {board === "layouts" ? (
+            <LayoutsPanel
+              project={project}
+              libs={libs}
+              activeLayoutId={activeLayoutId}
+              setActiveLayoutId={setActiveLayoutId}
+              mutate={commit}
+              editLayout={editLayout}
+              setMessage={setMessage}
+              onPreviewOrientation={setPreviewOrientation}
+              selected={selectedKey}
+              onSelectKey={selectKey}
+              popup={popupKey ?? null}
+              onPopupKey={openPopup}
+              rightTab={rightTab}
+              setRightTab={setRightTab}
+              onMoveKey={moveKey}
+            />
+          ) : null}
+          {board === "interface" ? <InterfacePanel project={project} libs={libs} mutate={commit} setMessage={setMessage} onSkip={() => setBoard("devices")} /> : null}
+          {board === "devices" ? (
+            <DevicesPanel
+              project={project}
+              libs={libs}
+              mutate={commit}
+              setMessage={setMessage}
+              onFocusDevice={focusDevice}
+              onOpenLayouts={(layoutId) => {
+                setActiveLayoutId(layoutId);
+                setSelectedKey(undefined);
+                setPopupKey(undefined);
+                setBoard("layouts");
+              }}
+            />
+          ) : null}
+          {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} /> : null}
+          {board === "macros" ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+                <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => setBoard("theme")}>← 返回主题</Button>
+                <span className="text-[10px] text-muted-foreground">宏是可选工具；未使用的宏不会进入导出。</span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <MacrosPanel project={project} libs={libs} mutate={commit} setMessage={setMessage} />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {previewOpen && board !== "start" ? (
+          <PreviewRail
             project={project}
-            projects={projects}
             libs={libs}
-            dirty={dirty}
-            mutate={mutate}
-            onSave={() => void save()}
-            onNew={createProject}
-            onOpen={(id) => void openProject(id)}
-            onDelete={(id) => void removeProject(id)}
-            onImportBundle={(file) => void importBundle(file)}
-            onImportYaml={(files) => void pickImportYaml(files)}
-            onExportBundle={exportBundle}
-            snapshots={snapshots}
-            onSnapshot={(label) => void takeSnapshot(label)}
-            onRestoreSnapshot={(snapshot) => void restoreSnapshot(snapshot)}
-            onDeleteSnapshot={(key) => void removeSnapshot(key)}
-            onExportSnapshot={exportSnapshot}
-            onExportSnapshotBundle={exportSnapshotBundle}
-            onImportSnapshotBundle={(file) => void importSnapshotBundle(file)}
+            deviceId={previewDeviceId}
+            onDeviceId={(id) => {
+              setPreviewDeviceId(id);
+              if (board !== "layouts") {
+                const device = project.devices.find((item) => item.id === id);
+                if (device) setPreviewOrientation(device.orientation);
+              }
+            }}
+            orientation={previewOrientation}
+            onOrientation={setPreviewOrientation}
+            onCollapse={() => setPreviewOpen(false)}
+            layoutId={board === "layouts" ? activeLayoutId : undefined}
+            interactive={board === "layouts"}
+            wide={board === "layouts"}
+            selected={board === "layouts" ? selectedKey : undefined}
+            onSelect={selectKey}
+            popup={board === "layouts" ? popupKey ?? null : null}
+            onPopup={openPopup}
+            onMoveKey={moveKey}
+            onMessage={setMessage}
+            onClosePopup={() => setPopupKey(undefined)}
           />
         ) : null}
-        {board === "layouts" ? (
-          <LayoutsPanel
-            project={project}
-            libs={libs}
-            activeLayoutId={activeLayoutId}
-            setActiveLayoutId={setActiveLayoutId}
-            mutate={mutate}
-            editLayout={editLayout}
-            setMessage={setMessage}
-          />
-        ) : null}
-        {board === "themes" ? <ThemesPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
-        {board === "interface" ? <InterfacePanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
-        {board === "macros" ? <MacrosPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
-        {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} /> : null}
       </main>
+
+      <ProjectDrawer
+        open={projectsOpen}
+        onClose={() => setProjectsOpen(false)}
+        project={project}
+        projects={projects}
+        snapshots={snapshots}
+        onSave={() => void save()}
+        onNew={createProject}
+        onOpen={(id) => void openProject(id)}
+        onDelete={(id) => void removeProject(id)}
+        onImportBundle={(file) => void importBundle(file)}
+        onImportYaml={(files) => void pickImportYaml(files)}
+        onExportBundle={exportBundle}
+        onSnapshot={(label) => void takeSnapshot(label)}
+        onRestoreSnapshot={(snapshot) => void restoreSnapshot(snapshot)}
+        onDeleteSnapshot={(key) => void removeSnapshot(key)}
+        onExportSnapshot={exportSnapshot}
+        onExportSnapshotBundle={exportSnapshotBundle}
+        onImportSnapshotBundle={(file) => void importSnapshotBundle(file)}
+        onOpenMacros={() => { setProjectsOpen(false); setBoard("macros"); }}
+        onOpenAdvanced={() => { setProjectsOpen(false); setAdvancedOpen(true); }}
+      />
+
+      <AdvancedDrawer
+        open={advancedOpen}
+        onClose={() => setAdvancedOpen(false)}
+        project={project}
+        libs={libs}
+        mutate={commit}
+        setMessage={setMessage}
+      />
 
       {pendingImport ? (
         <ImportDialog

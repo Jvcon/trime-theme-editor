@@ -28,11 +28,14 @@ preset_keys:
 `;
 
 describe("importTrimeYaml", () => {
-  it("returns a v2 bundle with embedded presets", () => {
+  it("returns a v3 bundle with embedded presets", () => {
     const { project } = importTrimeYaml(SOURCE, "trime.yaml");
     expect(project.format).toBe("trime-theme-bundle");
-    expect(project.schemaVersion).toBe(2);
-    expect(project.theme.id).toContain("imported-card");
+    expect(project.schemaVersion).toBe(3);
+    expect(project.theme.light.id).toContain("imported-card");
+    expect(project.theme.dark.id).toContain("imported-card");
+    expect(project.theme.light.builtin).toBe(false);
+    expect(project.theme.dark.builtin).toBe(false);
     expect(project.layouts.map((layout) => layout.id)).toContain(project.mainLayoutId);
     expect(project.macros.map((macro) => macro.id)).toContain("macro_hello");
   });

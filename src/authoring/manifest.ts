@@ -2,7 +2,7 @@ import { compileBundle } from "./compiler";
 import type { ProjectBundle } from "./types";
 import { normalizeBundle, portableBundle } from "./utils";
 
-export const EDITOR_VERSION = "0.3.0";
+export const EDITOR_VERSION = "0.4.0";
 
 export type ManifestDevice = {
   id: string;

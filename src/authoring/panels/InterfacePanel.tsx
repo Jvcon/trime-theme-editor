@@ -16,9 +16,10 @@ type Props = {
   libs: PresetLibraries;
   mutate: (fn: (draft: ProjectBundle) => void) => void;
   setMessage: (message: string) => void;
+  onSkip?: () => void;
 };
 
-export function InterfacePanel({ project, libs, mutate, setMessage }: Props) {
+export function InterfacePanel({ project, libs, mutate, setMessage, onSkip }: Props) {
   const chrome = project.chrome ?? defaultChrome();
   const [tab, setTab] = useState("toolbar");
   const [selectedLiquid, setSelectedLiquid] = useState(chrome.liquid.tabs[0]?.id ?? "");
@@ -86,9 +87,11 @@ export function InterfacePanel({ project, libs, mutate, setMessage }: Props) {
   return (
     <div className="h-full overflow-auto p-5">
       <div className="mb-4 flex items-center gap-2">
-        <span className="text-sm font-semibold">Interface</span>
+        <span className="text-sm font-semibold">界面</span>
         <Badge variant="muted">toolbar / liquid / window / preedit</Badge>
+        <span className="text-[9px] text-muted-foreground">可选 · 影响所有设备</span>
         <span className="ml-auto text-[10px] text-muted-foreground">这些配置会进入同一份 trime.yaml</span>
+        {onSkip ? <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={onSkip}>跳过，使用默认 →</Button> : null}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>

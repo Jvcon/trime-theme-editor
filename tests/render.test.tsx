@@ -3,29 +3,92 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AuthoringApp } from "../src/authoring/AuthoringApp";
 import { ImportDialog } from "../src/authoring/ImportDialog";
 import { defaultBundle } from "../src/authoring/compiler";
-import { BasicPanel } from "../src/authoring/panels/BasicPanel";
+import { AdvancedDrawer } from "../src/authoring/components/AdvancedDrawer";
+import { ProjectDrawer } from "../src/authoring/components/ProjectDrawer";
+import { DevicesPanel } from "../src/authoring/panels/DevicesPanel";
 import { ExportPanel } from "../src/authoring/panels/ExportPanel";
+import { ThemesPanel } from "../src/authoring/panels/ThemesPanel";
 import { libraries } from "../src/authoring/utils";
 
 const noop = vi.fn();
 
 describe("AuthoringApp", () => {
-  it("renders the default v2 bundle without touching IndexedDB", () => {
+  it("renders the default v3 bundle without touching IndexedDB", () => {
     const html = renderToStaticMarkup(<AuthoringApp />);
     expect(html).toContain("Trime Theme Editor");
-    expect(html).toContain("Keyboard preview");
-    expect(html).toContain("26 键");
+    expect(html).toContain("项目信息");
+    expect(html).toContain("色卡");
+    expect(html).toContain("预览");
+    for (const label of ["主题", "布局", "界面", "设备", "检查与导出"]) expect(html).toContain(label);
+    expect(html).toContain("可选");
+    expect(html).not.toContain("Basic");
   });
 
-  it("renders the Basic panel with device and schema-binding editors", () => {
+  it("renders the theme step with independent light and dark scheme pickers", () => {
     const project = defaultBundle();
     const html = renderToStaticMarkup(
-      <BasicPanel
+      <ThemesPanel
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+      />,
+    );
+    expect(html).toContain("浅色方案");
+    expect(html).toContain("深色方案");
+    expect(html).toContain("Alucard");
+    expect(html).toContain("Dracula");
+    expect(html).not.toContain("内置");
+    expect(html).toContain("修改任意颜色时会自动复制为自定义方案");
+  });
+
+  it("labels user-edited schemes as custom without showing a built-in badge", () => {
+    const project = defaultBundle();
+    project.theme.light = {
+      ...structuredClone(project.theme.light),
+      id: "custom-light",
+      name: "My Light",
+      builtin: false,
+    };
+    const html = renderToStaticMarkup(
+      <ThemesPanel
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+      />,
+    );
+    expect(html).toContain("自定义");
+    expect(html).toContain("My Light");
+    expect(html).not.toContain("内置");
+  });
+
+  it("renders the device step with layout binding and adaptation modes", () => {
+    const project = defaultBundle();
+    const html = renderToStaticMarkup(
+      <DevicesPanel
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+        onOpenLayouts={noop}
+        onFocusDevice={noop}
+      />,
+    );
+    expect(html).toContain("设备适配");
+    expect(html).toContain("编译布局");
+    expect(html).toContain("横屏推荐");
+  });
+
+  it("renders the project drawer and the advanced drawer", () => {
+    const project = defaultBundle();
+    const drawer = renderToStaticMarkup(
+      <ProjectDrawer
+        open
+        onClose={noop}
         project={project}
         projects={[project]}
-        libs={libraries(project)}
-        dirty={false}
-        mutate={noop}
+        snapshots={[]}
         onSave={noop}
         onNew={noop}
         onOpen={noop}
@@ -33,25 +96,39 @@ describe("AuthoringApp", () => {
         onImportBundle={noop}
         onImportYaml={noop}
         onExportBundle={noop}
-        snapshots={[]}
         onSnapshot={noop}
         onRestoreSnapshot={noop}
         onDeleteSnapshot={noop}
         onExportSnapshot={noop}
         onExportSnapshotBundle={noop}
         onImportSnapshotBundle={noop}
+        onOpenMacros={noop}
+        onOpenAdvanced={noop}
       />,
     );
-    expect(html).toContain("Devices");
-    expect(html).toContain("Schema bindings");
-    expect(html).toContain("Fallback colors");
+    expect(drawer).toContain("项目列表");
+    expect(drawer).toContain("快照");
+
+    const advanced = renderToStaticMarkup(
+      <AdvancedDrawer
+        open
+        onClose={noop}
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+      />,
+    );
+    expect(advanced).toContain("输入法绑定");
+    expect(advanced).toContain("概要");
   });
 
   it("renders schema validation and drift comparison in the Export panel", () => {
     const project = defaultBundle();
     const html = renderToStaticMarkup(<ExportPanel project={project} snapshots={[]} setMessage={noop} />);
+    expect(html).toContain("检查与导出");
     expect(html).toContain("schema 3.3.13");
-    expect(html).toContain("Compare with existing trime.yaml");
+    expect(html).toContain("更多工具 · 与现有 trime.yaml 对比");
     expect(html).toContain("Manifest");
   });
 
