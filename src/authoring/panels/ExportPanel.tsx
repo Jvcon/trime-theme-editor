@@ -6,34 +6,36 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { compileBundle } from "../compiler";
 import { diffBundles } from "../diff";
+import { buildManifest } from "../manifest";
 import type { Snapshot } from "../storage";
 import type { ProjectBundle } from "../types";
 import { normalizeBundle, slug } from "../utils";
 
 type Props = {
   project: ProjectBundle;
-  yaml: string;
   snapshots: Snapshot[];
   setMessage: (message: string) => void;
 };
 
 type Issue = { level: "error" | "warning"; message: string };
 
-export function ExportPanel({ project, yaml, snapshots, setMessage }: Props) {
+export function ExportPanel({ project, snapshots, setMessage }: Props) {
   const [copied, setCopied] = useState(false);
   const [compareKey, setCompareKey] = useState("");
   const [diffView, setDiffView] = useState<"yaml" | "structured">("yaml");
   const [diffQuery, setDiffQuery] = useState("");
-  const main = project.layouts.find((item) => item.id === project.mainLayoutId);
-  const pageLayouts = [main, ...project.pageIds.map((id) => project.layouts.find((item) => item.id === id))].filter(Boolean);
+  const [deviceId, setDeviceId] = useState(project.devices[0]?.id ?? "");
+  const device = project.devices.find((item) => item.id === deviceId) ?? project.devices[0];
+  const activeDeviceId = device?.id ?? "";
+  const yaml = useMemo(() => compileBundle(project, activeDeviceId), [project, activeDeviceId]);
   const issues = useMemo(() => validate(project), [project]);
   const errors = issues.filter((issue) => issue.level === "error");
   const warnings = issues.filter((issue) => issue.level === "warning");
-  const fileName = `${slug(project.meta.name)}.yaml`;
+  const fileName = `${slug(project.meta.name)}-${activeDeviceId || "device"}.yaml`;
   const compareYaml = useMemo(() => {
     const snapshot = snapshots.find((item) => item.key === compareKey);
-    return snapshot ? compileBundle(normalizeBundle(snapshot.project)) : "";
-  }, [compareKey, snapshots]);
+    return snapshot ? compileBundle(normalizeBundle(snapshot.project), activeDeviceId) : "";
+  }, [compareKey, snapshots, activeDeviceId]);
   const diff = useMemo(() => (compareYaml ? diffLines(compareYaml, yaml) : []), [compareYaml, yaml]);
   const added = diff.filter((op) => op.type === "add").length;
   const removed = diff.filter((op) => op.type === "remove").length;
@@ -74,6 +76,16 @@ export function ExportPanel({ project, yaml, snapshots, setMessage }: Props) {
     setMessage(`已下载 ${fileName}`);
   };
 
+  const downloadManifest = async () => {
+    try {
+      const manifest = await buildManifest(project);
+      downloadFile(`${JSON.stringify(manifest, null, 2)}\n`, "manifest.json", "application/json;charset=utf-8");
+      setMessage(`已下载 manifest.json（${manifest.devices.length} devices）`);
+    } catch (error) {
+      setMessage(`manifest 生成失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const copyDiff = async () => {
     if (!markdown) return;
     await navigator.clipboard.writeText(markdown);
@@ -84,19 +96,28 @@ export function ExportPanel({ project, yaml, snapshots, setMessage }: Props) {
     <div className="h-full overflow-auto p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">Export trime.yaml</span>
-        <Badge variant="muted">{pagesLabel(pageLayouts.length)}</Badge>
+        <Select className="h-7 w-48" value={activeDeviceId} onChange={(event) => setDeviceId(event.target.value)}>
+          {project.devices.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.id} · {item.kind}{item.foldState ? `/${item.foldState}` : ""} · {item.orientation}
+            </option>
+          ))}
+        </Select>
+        <Badge variant="muted">{project.layouts.length} layouts</Badge>
+        <Badge variant="muted">{project.schemaBindings.length} aliases</Badge>
         <Badge variant="muted">{project.macros.length} macros</Badge>
         <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
           {errors.length ? `${errors.length} errors` : warnings.length ? `${warnings.length} warnings` : "ready"}
         </Badge>
         <div className="ml-auto flex gap-1">
+          <Button size="sm" variant="outline" onClick={() => void downloadManifest()}><Download />Manifest</Button>
           <Button size="sm" variant="outline" onClick={() => void copy()}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy YAML"}</Button>
           <Button size="sm" variant="secondary" onClick={download}><Download />Download</Button>
         </div>
       </div>
 
       <p className="mb-3 text-[10px] text-muted-foreground">
-        这是唯一产物：主题色卡 + 键位配色 + 键盘布局 + 宏 + 方案 meta 编译成一份完整 <code>trime.yaml</code>。不会写盘。
+        每个 device 输出一份完整 <code>trime.yaml</code>；manifest 包含 device、path、sha256、projectHash 和 editorVersion。不会写盘。
       </p>
 
       <section className="mb-3 rounded-xl border border-border bg-card p-3">
@@ -191,10 +212,6 @@ export function ExportPanel({ project, yaml, snapshots, setMessage }: Props) {
   );
 }
 
-function pagesLabel(count: number): string {
-  return `${count} keyboards`;
-}
-
 function validate(project: ProjectBundle): Issue[] {
   const issues: Issue[] = [];
   const macroIds = new Set(project.macros.map((item) => item.id));
@@ -271,6 +288,36 @@ function validate(project: ProjectBundle): Issue[] {
       });
     });
   }
+
+  const deviceIds = new Set<string>();
+  for (const device of project.devices) {
+    if (deviceIds.has(device.id)) {
+      issues.push({ level: "error", message: `device id 重复：${device.id}` });
+    }
+    deviceIds.add(device.id);
+    if (device.mainLayoutId && !layoutIds.has(device.mainLayoutId)) {
+      issues.push({ level: "error", message: `device ${device.id} 引用了不存在的布局：${device.mainLayoutId}` });
+    }
+  }
+
+  const aliases = new Set<string>();
+  for (const binding of project.schemaBindings) {
+    if (!binding.schemaId.trim()) {
+      issues.push({ level: "warning", message: "schema binding 没有 schema_id" });
+    }
+    if (!layoutIds.has(binding.layoutId)) {
+      issues.push({ level: "error", message: `schema ${binding.schemaId || "(empty)"} 引用了不存在的布局：${binding.layoutId}` });
+    }
+    const alias = binding.alias?.trim() || `schema_${sanitize(binding.schemaId || binding.layoutId)}`;
+    if (alias === "default" || layoutIds.has(alias)) {
+      issues.push({ level: "error", message: `schema alias 与键盘 id 冲突：${alias}` });
+    }
+    if (aliases.has(alias)) {
+      issues.push({ level: "error", message: `schema alias 重复：${alias}` });
+    }
+    aliases.add(alias);
+  }
+
   return issues.slice(0, 40);
 }
 

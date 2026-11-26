@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import type { PresetLibraries, ProjectBundle } from "../types";
+import type { DeviceKind, FoldState, Orientation, PresetLibraries, ProjectBundle } from "../types";
 import type { Snapshot } from "../storage";
 import { embedLayout, pages, pruneBundleLayouts } from "../utils";
 
@@ -31,6 +31,34 @@ type Props = {
   onImportSnapshotBundle: (file: File) => void;
 };
 
+const DEVICE_PRESETS: Array<{ label: string; kind: DeviceKind; orientation: Orientation; foldState?: FoldState }> = [
+  { label: "Phone · portrait", kind: "phone", orientation: "portrait" },
+  { label: "Phone · landscape", kind: "phone", orientation: "landscape" },
+  { label: "Tablet · portrait", kind: "tablet", orientation: "portrait" },
+  { label: "Tablet · landscape", kind: "tablet", orientation: "landscape" },
+  { label: "Fold · folded", kind: "fold", orientation: "portrait", foldState: "folded" },
+  { label: "Fold · unfolded", kind: "fold", orientation: "portrait", foldState: "unfolded" },
+];
+
+const DEVICE_METRIC_FIELDS = [
+  ["keyHeight", "Key height", 52],
+  ["keyboardHeight", "Keyboard height", 270],
+  ["candidateViewHeight", "Candidate height", 44],
+  ["horizontalGap", "Horizontal gap", 2],
+  ["verticalGap", "Vertical gap", 3],
+  ["popupWidth", "Popup width", 44],
+  ["popupHeight", "Popup height", 56],
+  ["popupKeyHeight", "Popup key height", 48],
+] as const;
+
+function sanitizeId(value: string) {
+  return value.replace(/[^A-Za-z0-9_-]/g, "-").replace(/^-+|-+$/g, "") || "device";
+}
+
+function bindingAlias(binding: ProjectBundle["schemaBindings"][number]): string {
+  return binding.alias?.trim() || `schema_${sanitizeId(binding.schemaId || binding.layoutId)}`;
+}
+
 export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onNew, onOpen, onDelete, onImportBundle, onImportYaml, onExportBundle, snapshots, onSnapshot, onRestoreSnapshot, onDeleteSnapshot, onExportSnapshot, onExportSnapshotBundle, onImportSnapshotBundle }: Props) {
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const card = project.theme;
@@ -52,6 +80,107 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
       embedLayout(draft, next);
       draft.mainLayoutId = next.id;
       draft.pageIds = draft.pageIds.filter((pageId) => pageId !== next.id);
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const mainLayouts = libs.layouts.filter((item) => item.pageRole === "main");
+
+  const addDevice = (index: number) => {
+    const preset = DEVICE_PRESETS[index];
+    if (!preset) return;
+    mutate((draft) => {
+      const base = preset.foldState ? `${preset.kind}-${preset.foldState}` : `${preset.kind}-${preset.orientation}`;
+      let id = base;
+      let suffix = 2;
+      while (draft.devices.some((device) => device.id === id)) {
+        id = `${base}-${suffix}`;
+        suffix += 1;
+      }
+      draft.devices.push({
+        id,
+        kind: preset.kind,
+        orientation: preset.orientation,
+        ...(preset.foldState ? { foldState: preset.foldState } : {}),
+      });
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const updateDevice = (index: number, fn: (device: ProjectBundle["devices"][number]) => void) => {
+    mutate((draft) => {
+      const device = draft.devices[index];
+      if (!device) return;
+      fn(device);
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const removeDevice = (index: number) => {
+    if (project.devices.length <= 1) return;
+    mutate((draft) => {
+      draft.devices.splice(index, 1);
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const setDeviceMainLayout = (index: number, id: string) => {
+    const next = id ? libs.layouts.find((item) => item.id === id) : undefined;
+    mutate((draft) => {
+      const device = draft.devices[index];
+      if (!device) return;
+      if (!next) {
+        delete device.mainLayoutId;
+      } else {
+        embedLayout(draft, next);
+        device.mainLayoutId = next.id;
+      }
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const updateDeviceMetric = (index: number, field: (typeof DEVICE_METRIC_FIELDS)[number][0], raw: string) => {
+    mutate((draft) => {
+      const device = draft.devices[index];
+      if (!device) return;
+      const metrics = { ...(device.metrics ?? {}) };
+      if (raw === "") delete metrics[field];
+      else metrics[field] = Number(raw);
+      device.metrics = metrics;
+    });
+  };
+
+  const addBinding = () => {
+    mutate((draft) => {
+      draft.schemaBindings.push({ schemaId: "", layoutId: draft.mainLayoutId, alias: "" });
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const updateBinding = (index: number, patch: { schemaId?: string; alias?: string }) => {
+    mutate((draft) => {
+      const binding = draft.schemaBindings[index];
+      if (!binding) return;
+      if (patch.schemaId !== undefined) binding.schemaId = patch.schemaId;
+      if (patch.alias !== undefined) binding.alias = patch.alias;
+    });
+  };
+
+  const setBindingLayout = (index: number, id: string) => {
+    const next = libs.layouts.find((item) => item.id === id);
+    if (!next) return;
+    mutate((draft) => {
+      const binding = draft.schemaBindings[index];
+      if (!binding) return;
+      embedLayout(draft, next);
+      binding.layoutId = next.id;
+      pruneBundleLayouts(draft);
+    });
+  };
+
+  const removeBinding = (index: number) => {
+    mutate((draft) => {
+      draft.schemaBindings.splice(index, 1);
       pruneBundleLayouts(draft);
     });
   };
@@ -126,6 +255,89 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
             </label>
           </div>
           <p className="mt-2 text-[10px] text-muted-foreground">v2 bundle 只包含当前项目实际使用的色卡、布局和宏，可直接入库、diff、复现。也可以导入一份现有 trime.yaml，把 preset_keyboards / preset_keys / preset_color_schemes 转成可编辑项目。</p>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">Devices</h2>
+            <Badge variant="muted">{project.devices.length}</Badge>
+            <span className="text-[10px] text-muted-foreground">每个 device 输出一份 trime.yaml；共享内容只写一次</span>
+            <Select className="ml-auto h-8 w-40 text-xs" value="" onChange={(event) => { addDevice(Number(event.target.value)); event.target.value = ""; }}>
+              <option value="">+ Add device</option>
+              {DEVICE_PRESETS.map((preset, index) => <option key={preset.label} value={index}>{preset.label}</option>)}
+            </Select>
+          </div>
+          <div className="space-y-2">
+            {project.devices.map((device, index) => (
+              <div key={device.id} className="rounded-lg border border-border bg-muted/10 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{device.id}</code>
+                  <Select className="h-7 w-24" value={device.kind} onChange={(event) => updateDevice(index, (draft) => { draft.kind = event.target.value as DeviceKind; if (draft.kind !== "fold") delete draft.foldState; })}>
+                    <option value="phone">phone</option>
+                    <option value="fold">fold</option>
+                    <option value="tablet">tablet</option>
+                  </Select>
+                  <Select className="h-7 w-28" value={device.orientation} onChange={(event) => updateDevice(index, (draft) => { draft.orientation = event.target.value as Orientation; })}>
+                    <option value="portrait">portrait</option>
+                    <option value="landscape">landscape</option>
+                  </Select>
+                  {device.kind === "fold" ? (
+                    <Select className="h-7 w-28" value={device.foldState ?? "unfolded"} onChange={(event) => updateDevice(index, (draft) => { draft.foldState = event.target.value as FoldState; })}>
+                      <option value="folded">folded</option>
+                      <option value="unfolded">unfolded</option>
+                    </Select>
+                  ) : null}
+                  <Select className="h-7 w-40" value={device.mainLayoutId ?? ""} onChange={(event) => setDeviceMainLayout(index, event.target.value)}>
+                    <option value="">Inherit main layout</option>
+                    {device.mainLayoutId && !mainLayouts.some((item) => item.id === device.mainLayoutId) ? <option value={device.mainLayoutId}>{device.mainLayoutId} · missing</option> : null}
+                    {mainLayouts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </Select>
+                  <Button size="sm" variant="ghost" className="ml-auto h-7 px-1 text-red-300" disabled={project.devices.length <= 1} onClick={() => removeDevice(index)}><Trash2 /></Button>
+                </div>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  {DEVICE_METRIC_FIELDS.map(([field, label, fallback]) => (
+                    <Field key={field} label={label}>
+                      <Input
+                        className="h-7"
+                        type="number"
+                        value={device.metrics?.[field] ?? ""}
+                        placeholder={`inherit · ${fallback}`}
+                        onChange={(event) => updateDeviceMetric(index, field, event.target.value)}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">device 只保存差异：主布局与 metrics 覆盖，其余继承项目级设置。</p>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">Schema bindings</h2>
+            <Badge variant="muted">{project.schemaBindings.length}</Badge>
+            <span className="text-[10px] text-muted-foreground">schema_id → keyset，输出 alias keyboard（import_preset）</span>
+            <Button size="sm" variant="outline" className="ml-auto h-8" onClick={addBinding}><Plus />Add binding</Button>
+          </div>
+          {project.schemaBindings.length === 0 ? (
+            <p className="py-2 text-[10px] text-muted-foreground">还没有 schema 绑定。添加后会在 preset_keyboards 里生成 alias，例如 <code>schema_luna_pinyin: import_preset: qwerty26</code>。</p>
+          ) : (
+            <div className="space-y-2">
+              {project.schemaBindings.map((binding, index) => (
+                <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/10 p-2">
+                  <Input className="h-7 w-44" value={binding.schemaId} placeholder="schema_id（如 luna_pinyin）" onChange={(event) => updateBinding(index, { schemaId: event.target.value })} />
+                  <Select className="h-7 w-40" value={binding.layoutId} onChange={(event) => setBindingLayout(index, event.target.value)}>
+                    {!mainLayouts.some((item) => item.id === binding.layoutId) ? <option value={binding.layoutId}>{binding.layoutId} · missing</option> : null}
+                    {mainLayouts.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </Select>
+                  <Input className="h-7 w-40" value={binding.alias ?? ""} placeholder="alias（可留空自动生成）" onChange={(event) => updateBinding(index, { alias: event.target.value })} />
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{bindingAlias(binding)}</code>
+                  <Button size="sm" variant="ghost" className="ml-auto h-7 px-1 text-red-300" onClick={() => removeBinding(index)}><Trash2 /></Button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">

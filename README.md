@@ -26,6 +26,9 @@ Basic / Layouts / Themes / Interface / Macros / Export
 - 选择主题色卡、light/dark variant、主布局
 - 项目列表：IndexedDB 保存 / 打开 / 删除
 - v2 bundle 导入 / 导出（只含实际使用的色卡、布局、宏）
+- Devices：phone / fold / tablet、portrait / landscape、folded / unfolded；
+  per-device 主布局与 key / keyboard / candidate 高度覆盖
+- Schema bindings：schema_id → keyset，自动生成 alias keyboard（`import_preset`）
 - 导入现有 `trime.yaml`（含 `base:` 包装的 `rime/trime.base.yaml`）
 - 快照：命名创建、保存前自动快照、恢复、删除、JSON/YAML 导出、快照包导入导出
 - 组合摘要
@@ -69,13 +72,14 @@ Basic / Layouts / Themes / Interface / Macros / Export
 
 ### Export
 
-- 唯一产物：完整单文件 `trime.yaml`
-- 复制 / 下载
-- 引用、行宽、popup/long_click、liquid tab、preset key 校验
-- 与任一快照对比：
+- 每个 device 输出一份完整 `trime.yaml`
+- 设备切换、复制 / 下载
+- `manifest.json`：device、path、sha256、projectHash、editorVersion
+- 引用、行宽、popup/long_click、liquid tab、preset key、schema alias 校验
+- 与任一快照对比（同一 device）：
   - YAML 行级 diff
-  - 结构化 diff（Meta / Theme / Key styles / Layouts / Macros / Interface /
-    Metrics / Preset keys）
+  - 结构化 diff（Meta / Theme / Key styles / Layouts / Macros / Devices /
+    Interface / Metrics / Preset keys）
   - 搜索、复制/下载 Markdown
 
 ## 本地开发
@@ -220,8 +224,9 @@ liquid_keyboard
 ## English
 
 A self-contained authoring tool for [Trime](https://github.com/osfans/trime)
-themes. Compose typed presets (color cards, keyboard layouts, macros) and
-compile them into a single `trime.yaml`. Projects are stored as self-contained
-v2 bundles (only the presets actually used) and can be exported/imported as
-JSON. Everything runs in the browser; deploy as static assets on Cloudflare
-Workers with `npm run deploy`.
+themes. Compose typed presets (color cards, keyboard layouts, macros), add
+phone / fold / tablet device profiles and schema bindings, then compile each
+device into a single `trime.yaml` plus a deterministic `manifest.json`.
+Projects are stored as self-contained v2 bundles (only the presets actually
+used) and can be exported/imported as JSON. Everything runs in the browser;
+deploy as static assets on Cloudflare Workers with `npm run deploy`.

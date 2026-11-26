@@ -1,7 +1,7 @@
 {
   "name": "trime-theme-editor",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A self-contained Trime theme authoring tool that compiles typed presets into a single trime.yaml.",
   "license": "MIT",
   "type": "module",

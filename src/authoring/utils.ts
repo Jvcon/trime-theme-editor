@@ -132,7 +132,54 @@ export function pruneBundleLayouts(bundle: ProjectBundle): void {
     .map((id) => bundle.layouts.find((item) => item.id === id))
     .filter((item): item is LayoutPreset => item !== undefined && item.id !== main.id);
   bundle.pageIds = pages.map((item) => item.id);
-  bundle.layouts = [main, ...pages];
+
+  // Keep layouts referenced by devices and schema bindings, not just the
+  // current main layout and its pages. They still need to be compiled into
+  // preset_keyboards so alias lookups resolve.
+  const keep = new Set<string>([main.id, ...bundle.pageIds]);
+  for (const device of bundle.devices ?? []) {
+    if (device.mainLayoutId) keep.add(device.mainLayoutId);
+  }
+  for (const binding of bundle.schemaBindings ?? []) {
+    if (binding.layoutId) keep.add(binding.layoutId);
+  }
+  const extras = bundle.layouts.filter((item) => keep.has(item.id) && item.id !== main.id && !bundle.pageIds.includes(item.id));
+  bundle.layouts = [main, ...pages, ...extras];
+}
+
+const DEVICE_KINDS = ["phone", "fold", "tablet"] as const;
+const ORIENTATIONS = ["portrait", "landscape"] as const;
+const FOLD_STATES = ["folded", "unfolded"] as const;
+
+function normalizeDevices(input: ProjectBundle["devices"] | undefined): ProjectBundle["devices"] {
+  const devices = Array.isArray(input) ? input : [];
+  const seen = new Set<string>();
+  const output: ProjectBundle["devices"] = [];
+  for (const device of devices) {
+    if (!device) continue;
+    const kind = DEVICE_KINDS.includes(device.kind) ? device.kind : "phone";
+    const orientation = ORIENTATIONS.includes(device.orientation) ? device.orientation : "portrait";
+    const foldState = kind === "fold" && device.foldState && FOLD_STATES.includes(device.foldState)
+      ? device.foldState
+      : undefined;
+    let id = String(device.id || "").trim().replace(/[^A-Za-z0-9_-]/g, "-").replace(/^-+|-+$/g, "")
+      || `${kind}-${foldState ?? orientation}`;
+    if (seen.has(id)) {
+      let index = 2;
+      while (seen.has(`${id}-${index}`)) index += 1;
+      id = `${id}-${index}`;
+    }
+    seen.add(id);
+    output.push({
+      id,
+      kind,
+      orientation,
+      ...(foldState ? { foldState } : {}),
+      ...(device.metrics ? { metrics: device.metrics } : {}),
+      ...(device.mainLayoutId ? { mainLayoutId: device.mainLayoutId } : {}),
+    });
+  }
+  return output.length > 0 ? output : [{ id: "phone", kind: "phone", orientation: "portrait" }];
 }
 
 function fallbackTheme(): ThemeCardPreset {
@@ -165,10 +212,14 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
   bundle.layouts = Array.isArray(bundle.layouts) && bundle.layouts.length > 0 ? bundle.layouts : fallbackLayouts();
   bundle.mainLayoutId = bundle.mainLayoutId || bundle.layouts.find((item) => item.pageRole === "main")?.id || bundle.layouts[0].id;
   bundle.pageIds = (Array.isArray(bundle.pageIds) ? bundle.pageIds : []).filter((id) => id !== bundle.mainLayoutId);
-  bundle.devices = Array.isArray(bundle.devices) && bundle.devices.length > 0
-    ? bundle.devices
-    : [{ id: "phone", kind: "phone", orientation: "portrait" }];
-  bundle.schemaBindings = Array.isArray(bundle.schemaBindings) ? bundle.schemaBindings : [];
+  bundle.devices = normalizeDevices(bundle.devices);
+  bundle.schemaBindings = (Array.isArray(bundle.schemaBindings) ? bundle.schemaBindings : [])
+    .map((binding) => ({
+      schemaId: String(binding.schemaId ?? "").trim(),
+      layoutId: String(binding.layoutId ?? ""),
+      ...(binding.alias ? { alias: String(binding.alias).trim() } : {}),
+    }))
+    .filter((binding) => Boolean(binding.layoutId));
   bundle.chrome = normalizeChrome(bundle.chrome);
   bundle.customPresetKeys = bundle.customPresetKeys ?? {};
   bundle.passthrough = bundle.passthrough ?? {};

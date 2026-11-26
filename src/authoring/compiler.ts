@@ -1,5 +1,5 @@
 import YAML from "yaml";
-import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, Variant, WindowConfig } from "./types";
+import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ProjectMetrics, ThemeCardPreset, ToolbarButton, Variant, WindowConfig } from "./types";
 import { defaultChrome, defaultKeyStyles, normalizeBundle, normalizeChrome } from "./utils";
 import { BUILTIN_PRESETS } from "./presets";
 
@@ -241,6 +241,19 @@ function pageAction(id: string) {
   return `Keyboard_${id.replace(/[^A-Za-z0-9_]/g, "_")}`;
 }
 
+function sanitizeId(value: string) {
+  return value.replace(/[^A-Za-z0-9_]/g, "_");
+}
+
+function mergeMetrics(base: ProjectMetrics | undefined, override: Partial<ProjectMetrics> | undefined): ProjectMetrics {
+  const output: ProjectMetrics = { ...(base ?? {}) };
+  for (const key of Object.keys(override ?? {}) as Array<keyof ProjectMetrics>) {
+    const value = override?.[key];
+    if (value !== undefined) output[key] = value;
+  }
+  return output;
+}
+
 function actionToken(action: ActionRef | undefined): string | undefined {
   if (!action) return undefined;
   if (action.kind === "char") return action.value;
@@ -331,19 +344,21 @@ export function stringifyTrime(value: unknown): string {
 }
 
 /**
- * Compiles a v2 bundle into a single trime.yaml. The bundle is the only
- * source of presets: there is no fallback to built-in libraries here.
+ * Compiles a v2 bundle into one trime.yaml for a device profile. The bundle
+ * is the only source of presets: there is no fallback to built-in libraries
+ * here. All layouts in the bundle are compiled so device overrides and schema
+ * aliases can reference them.
  */
-export function compileBundle(input: ProjectBundle): string {
+export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   const bundle = normalizeBundle(input);
+  const device = bundle.devices.find((item) => item.id === deviceId) ?? bundle.devices[0];
   const card = bundle.theme;
   const variant = card.variants[bundle.variant] ?? card.variants.light;
-  const layout = bundle.layouts.find((item) => item.id === bundle.mainLayoutId) ?? bundle.layouts[0];
-  const pageIds = bundle.pageIds.filter((id) => id !== layout.id);
-  const pages = [
-    layout,
-    ...pageIds.map((id) => bundle.layouts.find((item) => item.id === id)).filter((item): item is LayoutPreset => Boolean(item)),
-  ];
+  const overrideMainId = device?.mainLayoutId && bundle.layouts.some((item) => item.id === device.mainLayoutId)
+    ? device.mainLayoutId
+    : bundle.mainLayoutId;
+  const layout = bundle.layouts.find((item) => item.id === overrideMainId) ?? bundle.layouts[0];
+  const layouts = bundle.layouts;
   // Bundle macros are the selected set. References to macros that are not in
   // the bundle are reported by the Export panel validation instead of being
   // silently resolved from the built-in catalog.
@@ -354,18 +369,28 @@ export function compileBundle(input: ProjectBundle): string {
     const token = macroToken(item);
     if (token) presetKeys[macroId(item.id)] = { text: token };
   }
-  for (const p of pages) {
-    presetKeys[pageAction(p.id)] = { label: p.name, send: "Eisu_toggle", select: p.id };
+  for (const item of layouts) {
+    presetKeys[pageAction(item.id)] = { label: item.name, send: "Eisu_toggle", select: item.id };
   }
   presetKeys.Keyboard_main = { label: "ABC", send: "Eisu_toggle", select: layout.id };
   presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
 
   const presetKeyboards: Record<string, unknown> = {};
-  for (const p of pages) presetKeyboards[p.id] = compileLayout(p, variant, bundle.keyStyles);
+  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, variant, bundle.keyStyles);
   if (layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
+  // Schema bindings emit alias keyboards that import an existing keyset.
+  const aliases: string[] = [];
+  for (const binding of bundle.schemaBindings) {
+    if (!binding.layoutId || !layouts.some((item) => item.id === binding.layoutId)) continue;
+    const alias = binding.alias?.trim() || `schema_${sanitizeId(binding.schemaId || binding.layoutId)}`;
+    if (alias === "default" || Object.prototype.hasOwnProperty.call(presetKeyboards, alias)) continue;
+    presetKeyboards[alias] = { import_preset: binding.layoutId };
+    aliases.push(alias);
+  }
+
   const firstRowHeight = layout.rows[0]?.height ?? 52;
-  const metrics = bundle.metrics ?? {};
+  const metrics = mergeMetrics(bundle.metrics, device?.metrics);
   const chrome = normalizeChrome(bundle.chrome);
   for (const [name, value] of Object.entries(liquidPresetKeys(chrome.liquid))) {
     if (!presetKeys[name]) presetKeys[name] = value;
@@ -395,7 +420,7 @@ export function compileBundle(input: ProjectBundle): string {
       popup_key_height: metrics.popupKeyHeight ?? 48,
       popup_text_size: metrics.popupTextSize ?? 22,
       popup_bottom_margin: metrics.popupBottomMargin ?? 8,
-      keyboards: [...new Set([...pages.map((item) => item.id), "default"])],
+      keyboards: [...new Set([...layouts.map((item) => item.id), ...aliases, "default"])],
     },
     window: compileWindow(chrome.window),
     preedit: compilePreedit(chrome.preedit),

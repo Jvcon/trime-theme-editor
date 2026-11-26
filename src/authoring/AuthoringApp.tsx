@@ -166,7 +166,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     if (format === "json") {
       downloadText(JSON.stringify(portableBundle(next), null, 2), `${name}.json`, "application/json;charset=utf-8");
     } else {
-      downloadText(compileBundle(next), `${name}.yaml`, "text/yaml;charset=utf-8");
+      const deviceId = next.devices[0]?.id ?? "device";
+      downloadText(compileBundle(next, deviceId), `${name}-${deviceId}.yaml`, "text/yaml;charset=utf-8");
     }
     setMessage(`已导出快照：${snapshot.label}`);
   };
@@ -327,7 +328,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           <Badge variant={loading ? "muted" : dirty ? "warning" : "success"}>{loading ? "loading" : dirty ? "unsaved" : "saved"}</Badge>
           <Button size="sm" variant="secondary" onClick={() => void save()}><Save />Save</Button>
           <Button size="sm" variant="outline" onClick={() => void copyYaml()}><Copy />YAML</Button>
-          <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}.yaml`, "text/yaml;charset=utf-8")}><Download />Download</Button>
+          <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />Download</Button>
           {onClose ? <Button size="icon" variant="ghost" onClick={onClose}><X /></Button> : null}
         </div>
       </header>
@@ -370,7 +371,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         {board === "themes" ? <ThemesPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
         {board === "interface" ? <InterfacePanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
         {board === "macros" ? <MacrosPanel project={project} libs={libs} mutate={mutate} setMessage={setMessage} /> : null}
-        {board === "export" ? <ExportPanel project={project} yaml={yaml} snapshots={snapshots} setMessage={setMessage} /> : null}
+        {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} /> : null}
       </main>
 
       {pendingImport ? (
