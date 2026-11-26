@@ -25,13 +25,13 @@
 
 ### 项目与流程
 
-- 着陆页：从模板开始 / 导入现有 `trime.yaml` / 打开最近项目
+- 着陆页：新建空白项目 / 导入现有 `trime.yaml` / 打开最近项目
 - 顶部步进器显示每一步的完成依据（✓ / ⚠ / ✗ / 使用默认），位置与可选状态一目了然
-- 设备是必须步骤，但默认的 Phone·竖屏 即可通过，只需确认
+- 设备是必须步骤；新项目默认只有一台 Phone·竖屏，添加布局后即可继承默认布局或单独选择
 - 界面与宏标记为可选；跳过不影响导出
-- 项目抽屉：IndexedDB 保存 / 打开 / 删除、bundle v3 导入导出（兼容 v2）、trime.yaml 导入、快照
+- 项目抽屉：IndexedDB 保存 / 打开 / 删除、bundle v4 导入导出（兼容 v2/v3）、trime.yaml 导入、快照
 - 设备步骤：`phone / fold / tablet`、`portrait / landscape`、`folded / unfolded`；
-  绑定布局组，只保存尺寸差异；三档适配（继承 / 横屏推荐 / 精细）
+  选择布局（可继承默认布局），只保存尺寸差异；三档适配（继承 / 横屏推荐 / 精细）
 - Schema 绑定放在高级抽屉：`schema_id → keyset`，自动生成 alias keyboard
 - 导入现有 `trime.yaml`（支持多文件、`__include` / `__patch`、`base:` 包装）
 - 导入默认保留原始行宽；校准到 100% 为可选
@@ -41,10 +41,12 @@
 
 ### 布局
 
-- 布局组：主布局 + Pages 组合
-- **不会自动删除你修改过的布局**：切换主布局、改设备后，旧的自定义布局进入「保留的布局」，可继续编辑、设为主布局或手动删除；保留的布局仍会编译进导出
-- **横屏变体**：一个布局下可挂 `landscapeId`，横屏设备自动解析；未创建时回退竖屏并给 warning
-- 变体可「克隆」或「精简派生」（去一行 + 行宽校准），只影响横屏
+- 布局组：一个有序布局集合；顺序只影响 UI，每个成员编译成一个 `preset_keyboard`
+- 新项目默认没有布局；空状态直接添加内置 preset 或新建空白布局，第一个布局自动设为默认布局
+- **默认布局是可选的**：未单独绑定布局的设备使用它；布局步骤可以先不设默认，到设备步骤逐台关联
+- 每个布局都可以被设备绑定；删除布局会明确检查并清除设备绑定、schema 绑定和 Page 跳转
+- **横屏变体**：任意组内布局都可挂 `landscapeId`，横屏设备自动解析；未创建时回退竖屏并给 warning
+- 变体不属于布局组成员，可「克隆」或「精简派生」（去一行 + 行宽校准），只影响横屏
 - 每处编辑显示「使用于哪些设备」的影响面
 - 26 / 18 / 14 / 9 键、数字、符号内置布局
 - 键盘预览、点击选键、长按 popup、双击 action（布局步骤在右侧预览中直接编辑）
@@ -186,16 +188,18 @@ Cloudflare Dashboard 的 Worker 设置中配置 Custom Domain。
 ThemeCardPreset   单套色卡 token + 状态 + 可选 appearance/family
 LayoutPreset      行、键、行为引用、style type、popup、可选 landscapeId
 MacroPreset       text + keycode 序列
-ProjectBundle v3  meta + theme { light, dark } + customThemeCards
-                  + layouts/pages + macros + key styles
-                  + chrome + devices + schemaBindings + fallbackColors
-                  + customPresetKeys + passthrough
+ProjectBundle v4  meta + theme { light, dark } + customThemeCards
+                  + layoutGroupIds + defaultLayoutId + layouts + macros
+                  + key styles + chrome + devices + schemaBindings
+                  + fallbackColors + customPresetKeys + passthrough
 ```
 
-`ProjectBundle` 就是导出格式，也是编译输入。v3 把浅色、深色拆成两张独立色卡；
-`variant` 只表示预览方向。编译时 `preset_color_schemes.light` 使用
-`theme.light`，`.dark` 使用 `theme.dark`。项目保存实际使用的色卡、主布局、
-页面布局和宏、你保留的自定义布局，以及用户创建的自定义色卡。
+`ProjectBundle` 就是导出格式，也是编译输入。v1/v2 的浅色深色对、v3 的
+`mainLayoutId + pageIds` 会在读取时迁移成 v4 的
+`layoutGroupIds + defaultLayoutId`。`variant` 只表示预览方向。编译时
+`preset_color_schemes.light` 使用 `theme.light`，`.dark` 使用 `theme.dark`。
+项目保存实际使用的色卡、布局组和宏，以及用户创建的自定义色卡。
+设备通过 `device.layoutId` 关联布局；省略时继承 `defaultLayoutId`。
 编译只读 bundle，不会回退到内置目录。内置 preset 只作为选择器目录存在。
 
 横屏结构差异归布局（`layout.landscapeId`），尺寸差异归设备
@@ -223,7 +227,7 @@ liquid_keyboard
 ## 存储与隐私
 
 - 项目草稿与快照存 IndexedDB
-- bundle v3 可导入/导出（兼容 v2 导入），可直接入库、diff、复现
+- bundle v4 可导入/导出（兼容 v2/v3 导入），可直接入库、diff、复现
 - 快照包为独立 JSON，可跨浏览器迁移
 - 所有操作都在本地浏览器完成，不写盘、不上传
 
@@ -281,8 +285,8 @@ compile each device into a single `trime.yaml` plus a deterministic
 keeps unmodelled fields in `passthrough`, and reports mapped / passthrough /
 review / dropped entries. Generated output is validated against the pinned
 Trime v3.3.13 JSON Schema, and an existing `trime.yaml` can be uploaded for
-normalized drift comparison. Projects are stored as self-contained v3 bundles
-(selected schemes, custom theme cards, and the presets actually used) and can
-be exported/imported as JSON; v2 bundles are migrated on import.
+normalized drift comparison. Projects are stored as self-contained v4 bundles
+(selected schemes, custom theme cards, layout group, and the presets actually
+used) and can be exported/imported as JSON; v2/v3 bundles are migrated on import.
 Everything runs in the browser; deploy as static assets on Cloudflare Workers
 with `npm run deploy`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { compileBundle, defaultBundle } from "../src/authoring/compiler";
+import { compileBundle, templateBundle } from "../src/authoring/compiler";
 import { BUILTIN_PRESETS } from "../src/authoring/presets";
 import { resolveLayoutForDevice } from "../src/authoring/resolve";
 import { validateTrimeYaml } from "../src/authoring/schema";
@@ -9,7 +9,7 @@ import type { ProjectBundle } from "../src/authoring/types";
 import { addLandscapeVariant, normalizeBundle, pruneBundleLayouts, removeLandscapeVariant } from "../src/authoring/utils";
 
 function landscapeBundle(): ProjectBundle {
-  const bundle = defaultBundle();
+  const bundle = templateBundle();
   const base = bundle.layouts.find((layout) => layout.id === "qwerty26");
   if (!base) throw new Error("missing qwerty26");
   const variant = structuredClone(base);
@@ -75,12 +75,14 @@ describe("landscape layout variants", () => {
     expect(issues.some((issue) => issue.level === "error")).toBe(false);
   });
 
-  it("keeps variants through pruning", () => {
+  it("keeps variants through pruning without making them group entries", () => {
     const bundle = landscapeBundle();
     const normalized = normalizeBundle(bundle);
     expect(normalized.layouts.map((layout) => layout.id)).toContain("qwerty26-landscape");
+    expect(normalized.layoutGroupIds).not.toContain("qwerty26-landscape");
     pruneBundleLayouts(normalized);
     expect(normalized.layouts.map((layout) => layout.id)).toContain("qwerty26-landscape");
+    expect(normalized.layoutGroupIds).not.toContain("qwerty26-landscape");
   });
 
   it("drops dangling landscape ids during normalization", () => {
@@ -102,7 +104,7 @@ describe("landscape layout variants", () => {
 });
 
 describe("variant authoring helpers", () => {  it("creates a variant, keeps it through pruning, and removes it cleanly", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     const base = bundle.layouts.find((layout) => layout.id === "qwerty26");
     if (!base) throw new Error("missing qwerty26");
     const builtin = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty26");
@@ -123,7 +125,7 @@ describe("variant authoring helpers", () => {  it("creates a variant, keeps it t
   });
 
   it("suffixes duplicate variant ids instead of clashing", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     const base = bundle.layouts.find((layout) => layout.id === "qwerty26");
     if (!base) throw new Error("missing qwerty26");
     const first = addLandscapeVariant(bundle, base);
@@ -136,7 +138,7 @@ describe("variant authoring helpers", () => {  it("creates a variant, keeps it t
 
 describe("layout retention when switching the main layout", () => {
   function customizedMain() {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     const base = bundle.layouts.find((layout) => layout.id === "qwerty26");
     if (!base) throw new Error("missing qwerty26");
     const custom = {
@@ -148,10 +150,10 @@ describe("layout retention when switching the main layout", () => {
     custom.rows[0].height = 61;
     bundle.layouts = bundle.layouts.filter((layout) => layout.id !== "qwerty26");
     bundle.layouts.push(custom);
-    bundle.mainLayoutId = custom.id;
+    bundle.defaultLayoutId = custom.id;
     const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
     if (qwerty18) bundle.layouts.push(structuredClone(qwerty18));
-    bundle.mainLayoutId = "qwerty18";
+    bundle.defaultLayoutId = "qwerty18";
     return bundle;
   }
 
@@ -160,7 +162,7 @@ describe("layout retention when switching the main layout", () => {
     pruneBundleLayouts(bundle);
     const custom = bundle.layouts.find((layout) => layout.id === "custom-qwerty26");
     expect(custom?.rows[0]?.height).toBe(61);
-    expect(bundle.mainLayoutId).toBe("qwerty18");
+    expect(bundle.defaultLayoutId).toBe("qwerty18");
   });
 
   it("survives normalization and a JSON round trip", () => {
@@ -171,22 +173,23 @@ describe("layout retention when switching the main layout", () => {
     expect(roundTripped.layouts.some((layout) => layout.id === "custom-qwerty26")).toBe(true);
   });
 
-  it("still prunes unused built-in layouts", () => {
-    const bundle = defaultBundle();
+  it("keeps every embedded built-in in the layout group", () => {
+    const bundle = templateBundle();
     const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
     if (qwerty18) bundle.layouts.push(structuredClone(qwerty18));
     pruneBundleLayouts(bundle);
-    expect(bundle.layouts.some((layout) => layout.id === "qwerty18")).toBe(false);
+    expect(bundle.layouts.some((layout) => layout.id === "qwerty18")).toBe(true);
+    expect(bundle.layoutGroupIds).toContain("qwerty18");
   });
 
   it("keeps a built-in base that owns an authored landscape variant", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     const base = bundle.layouts.find((layout) => layout.id === "qwerty26");
     if (!base) throw new Error("missing qwerty26");
     const variantId = addLandscapeVariant(bundle, base);
     const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
     if (qwerty18) bundle.layouts.push(structuredClone(qwerty18));
-    bundle.mainLayoutId = "qwerty18";
+    bundle.defaultLayoutId = "qwerty18";
     pruneBundleLayouts(bundle);
     expect(bundle.layouts.some((layout) => layout.id === "qwerty26")).toBe(true);
     expect(bundle.layouts.some((layout) => layout.id === variantId)).toBe(true);

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AuthoringApp } from "../src/authoring/AuthoringApp";
 import { ImportDialog } from "../src/authoring/ImportDialog";
-import { defaultBundle } from "../src/authoring/compiler";
+import { blankBundle, templateBundle } from "../src/authoring/compiler";
 import { AdvancedDrawer } from "../src/authoring/components/AdvancedDrawer";
 import { PreviewRail } from "../src/authoring/components/PreviewRail";
 import { ProjectDrawer } from "../src/authoring/components/ProjectDrawer";
@@ -15,7 +15,7 @@ import { isPlaceholder, libraries } from "../src/authoring/utils";
 const noop = vi.fn();
 
 describe("AuthoringApp", () => {
-  it("renders the default v3 bundle without touching IndexedDB", () => {
+  it("renders the blank v4 bundle without touching IndexedDB", () => {
     const html = renderToStaticMarkup(<AuthoringApp />);
     expect(html).toContain("Trime Theme Editor");
     expect(html).toContain("项目信息");
@@ -27,7 +27,7 @@ describe("AuthoringApp", () => {
   });
 
   it("renders the theme step with independent light and dark scheme pickers", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const html = renderToStaticMarkup(
       <ThemesPanel
         project={project}
@@ -48,7 +48,7 @@ describe("AuthoringApp", () => {
   });
 
   it("keeps key styles in one panel and drops the card-level state section", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const html = renderToStaticMarkup(
       <ThemesPanel
         project={project}
@@ -65,7 +65,7 @@ describe("AuthoringApp", () => {
   });
 
   it("edits placeholders as width-only slots", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const layout = project.layouts[0];
     let position: { row: number; key: number } | undefined;
     layout.rows.forEach((row, rowIndex) => {
@@ -97,8 +97,49 @@ describe("AuthoringApp", () => {
     expect(html).not.toContain("Label symbol");
   });
 
+  it("renders the empty layout group state without inventing a layout", () => {
+    const project = blankBundle();
+    const html = renderToStaticMarkup(
+      <LayoutsPanel
+        project={project}
+        libs={libraries(project)}
+        activeLayoutId=""
+        setActiveLayoutId={noop}
+        mutate={noop}
+        editLayout={noop}
+        setMessage={noop}
+        selected={undefined}
+        onSelectKey={noop}
+        popup={null}
+        onPopupKey={noop}
+        rightTab="page"
+        setRightTab={noop}
+        onMoveKey={noop}
+      />,
+    );
+    expect(html).toContain("还没有布局");
+    expect(html).toContain("添加内置布局");
+    expect(html).toContain("新建空白布局");
+  });
+
+  it("shows an unbound device when the project has no layouts", () => {
+    const project = blankBundle();
+    const html = renderToStaticMarkup(
+      <DevicesPanel
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+        onOpenLayouts={noop}
+        onFocusDevice={noop}
+      />,
+    );
+    expect(html).toContain("还没有布局");
+    expect(html).toContain("未绑定布局");
+  });
+
   it("offers a light/dark switch inside the preview rail", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const html = renderToStaticMarkup(
       <PreviewRail
         project={project}
@@ -117,7 +158,7 @@ describe("AuthoringApp", () => {
   });
 
   it("labels user-edited schemes as custom without showing a built-in badge", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     project.theme.light = {
       ...structuredClone(project.theme.light),
       id: "custom-light",
@@ -138,7 +179,7 @@ describe("AuthoringApp", () => {
   });
 
   it("renders the device step with layout binding and adaptation modes", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const html = renderToStaticMarkup(
       <DevicesPanel
         project={project}
@@ -155,7 +196,7 @@ describe("AuthoringApp", () => {
   });
 
   it("renders the project drawer and the advanced drawer", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const drawer = renderToStaticMarkup(
       <ProjectDrawer
         open
@@ -198,7 +239,7 @@ describe("AuthoringApp", () => {
   });
 
   it("renders schema validation and drift comparison in the Export panel", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const html = renderToStaticMarkup(<ExportPanel project={project} snapshots={[]} setMessage={noop} />);
     expect(html).toContain("检查与导出");
     expect(html).toContain("schema 3.3.13");

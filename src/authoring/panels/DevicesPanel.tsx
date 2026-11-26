@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/select";
 import { DEVICE_PRESET_OPTIONS, METRIC_DEFAULTS, applyLandscapeRecipe, isLandscapeRecipe } from "../devicePresets";
 import { deviceLabel, resolveLayoutForDevice } from "../resolve";
 import type { DeviceKind, FoldState, Orientation, PresetLibraries, ProjectBundle, ProjectMetrics } from "../types";
-import { embedLayout, pruneBundleLayouts } from "../utils";
+import { defaultLayout, embedLayout, groupLayouts, pruneBundleLayouts } from "../utils";
 
 type Props = {
   project: ProjectBundle;
@@ -36,7 +36,10 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
   const variantIds = new Set(
     project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
   );
-  const layoutOptions = libs.layouts.filter((item) => item.pageRole === "main" && !variantIds.has(item.id));
+  const group = groupLayouts(project);
+  const groupIds = new Set(group.map((item) => item.id));
+  const defaultEntry = defaultLayout(project);
+  const catalogOptions = libs.layouts.filter((item) => !groupIds.has(item.id) && !variantIds.has(item.id));
 
   const addDevice = (index: number) => {
     const preset = DEVICE_PRESET_OPTIONS[index];
@@ -85,16 +88,16 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
     setMessage("已删除设备");
   };
 
-  const setDeviceMainLayout = (index: number, id: string) => {
+  const setDeviceLayout = (index: number, id: string) => {
     const next = id ? libs.layouts.find((item) => item.id === id) : undefined;
     mutate((draft) => {
       const device = draft.devices[index];
       if (!device) return;
       if (!next) {
-        delete device.mainLayoutId;
+        delete device.layoutId;
       } else {
         embedLayout(draft, next);
-        device.mainLayoutId = next.id;
+        device.layoutId = next.id;
       }
       pruneBundleLayouts(draft);
     });
@@ -157,10 +160,17 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
         </Select>
       </div>
 
+      {group.length === 0 ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-2xs text-warning">
+          <span>还没有布局。可以先给每台设备选择一个内置布局（会自动加入布局组），也可以去布局步骤添加布局并设置默认布局。</span>
+          <Button size="sm" variant="outline" className="h-control-xs text-2xs" onClick={() => onOpenLayouts("")}>去布局步骤</Button>
+        </div>
+      ) : null}
+
       <div className="space-y-2">
         {project.devices.map((device, index) => {
-          const boundId = device.mainLayoutId ?? project.mainLayoutId;
-          const bound = libs.layouts.find((item) => item.id === boundId);
+          const boundId = device.layoutId ?? project.defaultLayoutId;
+          const bound = group.find((item) => item.id === boundId);
           const resolved = resolveLayoutForDevice(project, device);
           const variantMissing = device.orientation === "landscape" && bound && !bound.landscapeId;
           const hasOverrides = Object.keys(device.metrics ?? {}).length > 0;
@@ -188,10 +198,17 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
                     <option value="unfolded">展开</option>
                   </Select>
                 ) : null}
-                <Select className="h-control-sm w-52" value={device.mainLayoutId ?? ""} onChange={(event) => setDeviceMainLayout(index, event.target.value)}>
-                  <option value="">继承项目主布局（{libs.layouts.find((item) => item.id === project.mainLayoutId)?.name ?? "—"}）</option>
-                  {device.mainLayoutId && !layoutOptions.some((item) => item.id === device.mainLayoutId) ? <option value={device.mainLayoutId}>{device.mainLayoutId} · missing</option> : null}
-                  {layoutOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.pageRole}{item.landscapeId ? " · 含横屏变体" : ""}</option>)}
+                <Select className="h-control-sm w-56" value={device.layoutId ?? ""} onChange={(event) => setDeviceLayout(index, event.target.value)}>
+                  <option value="">继承默认布局（{defaultEntry?.name ?? "未设置"}）</option>
+                  {device.layoutId && !groupIds.has(device.layoutId) ? <option value={device.layoutId}>{device.layoutId} · 未加入布局组</option> : null}
+                  <optgroup label="布局组">
+                    {group.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role ?? "letters"}{item.landscapeId ? " · 含横屏变体" : ""}</option>)}
+                  </optgroup>
+                  {catalogOptions.length > 0 ? (
+                    <optgroup label="其他内置布局（选择后加入布局组）">
+                      {catalogOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role ?? "letters"}</option>)}
+                    </optgroup>
+                  ) : null}
                 </Select>
                 <Button size="sm" variant="ghost" className="ml-auto h-control-sm px-1 text-destructive" disabled={project.devices.length <= 1} onClick={() => removeDevice(index)}><Trash2 /></Button>
               </div>
@@ -199,6 +216,7 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
               <div className="mt-2 flex flex-wrap items-center gap-stack rounded-lg border border-border bg-muted/10 px-2 py-1.5 text-2xs">
                 <span className="text-muted-foreground">编译布局</span>
                 <span className="font-medium">{resolved?.name ?? "—"}</span>
+                {!boundId ? <Badge variant="danger">未绑定布局</Badge> : null}
                 {variantMissing ? (
                   <>
                     <Badge variant="warning">无横屏变体，沿用竖屏结构</Badge>
@@ -257,8 +275,8 @@ export function DevicesPanel({ project, libs, mutate, setMessage, onOpenLayouts,
       </div>
 
       <p className="mt-3 text-2xs text-muted-foreground">
-        设备只保存差异：主布局 + 尺寸覆盖，其余继承项目设置。横屏的结构差异请放到「布局」步骤的横屏变体里；
-        横屏通常只需要降低键盘高度、控制行数。
+        设备只保存差异：布局关联 + 尺寸覆盖，其余继承项目设置。未单独选择时继承默认布局；
+        横屏的结构差异请放到「布局」步骤的横屏变体里，横屏通常只需要降低键盘高度、控制行数。
       </p>
     </div>
   );

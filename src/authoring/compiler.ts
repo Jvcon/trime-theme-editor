@@ -370,7 +370,7 @@ export function stringifyTrime(value: unknown): string {
 }
 
 /**
- * Compiles a v3 bundle into one trime.yaml for a device profile. The bundle
+ * Compiles a v4 bundle into one trime.yaml for a device profile. The bundle
  * is the only source of presets: there is no fallback to built-in libraries
  * here. All layouts in the bundle are compiled so device overrides and schema
  * aliases can reference them.
@@ -383,7 +383,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   // Layout key colors are baked into preset_keyboards; they follow the preview
   // direction. The light/dark schemes themselves use their own cards.
   const previewCard = bundle.theme[bundle.variant] ?? darkCard;
-  const layout = resolveLayoutForDevice(bundle, device) ?? bundle.layouts[0];
+  const layout = resolveLayoutForDevice(bundle, device);
   const layouts = bundle.layouts;
   // Bundle macros are the selected set. References to macros that are not in
   // the bundle are reported by the Export panel validation instead of being
@@ -405,12 +405,14 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   for (const item of layouts) {
     presetKeys[pageAction(item.id)] = { label: item.name, send: "Eisu_toggle", select: item.id };
   }
-  presetKeys.Keyboard_main = { label: "ABC", send: "Eisu_toggle", select: layout.id };
-  presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
+  if (layout) {
+    presetKeys.Keyboard_main = { label: "ABC", send: "Eisu_toggle", select: layout.id };
+    presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
+  }
 
   const presetKeyboards: Record<string, unknown> = {};
   for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, previewCard, bundle.keyStyles, macroKeyOf);
-  if (layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
+  if (layout && layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
   // Schema bindings emit alias keyboards that import an existing keyset.
   // Landscape devices import the landscape variant when one exists.
@@ -429,7 +431,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
     aliases.push(alias);
   }
 
-  const firstRowHeight = layout.rows[0]?.height ?? 52;
+  const firstRowHeight = layout?.rows[0]?.height ?? 52;
   const metrics = mergeMetrics(bundle.metrics, device?.metrics);
   const chrome = normalizeChrome(bundle.chrome);
   const rawKeyboards = isDict(passthrough.preset_keyboards) ? passthrough.preset_keyboards : {};
@@ -492,7 +494,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
       popup_key_height: metrics.popupKeyHeight ?? 48,
       popup_text_size: metrics.popupTextSize ?? 22,
       popup_bottom_margin: metrics.popupBottomMargin ?? 8,
-      keyboards: [...new Set([...layouts.map((item) => item.id), ...aliases, "default"])],
+      keyboards: [...new Set([...layouts.map((item) => item.id), ...aliases, ...(layout ? ["default"] : [])])],
     }),
     window: mergeDeep(rawWindow, compileWindow(chrome.window)),
     preedit: mergeDeep(rawPreedit, compilePreedit(chrome.preedit)),
@@ -515,8 +517,34 @@ function embeddedPreset<T extends { id: string }>(items: T[], id: string): T {
   return structuredClone(found);
 }
 
-export function defaultBundle(): ProjectBundle {
-  const main = embeddedPreset(BUILTIN_PRESETS.layouts.filter((item) => item.pageRole === "main"), "qwerty26");
+function baseBundle(): ProjectBundle {
+  return {
+    format: "trime-theme-bundle",
+    schemaVersion: 4,
+    id: "default",
+    meta: { name: "My Trime Theme", author: "trime-theme-editor", description: "", configVersion: "3.0" },
+    devices: [{ id: "phone", kind: "phone", orientation: "portrait" }],
+    schemaBindings: [],
+    layoutGroupIds: [],
+    theme: defaultThemeSelection(),
+    variant: "dark",
+    customThemeCards: [],
+    keyStyles: defaultKeyStyles(),
+    layouts: [],
+    macros: [],
+    chrome: defaultChrome(),
+    passthrough: {},
+  };
+}
+
+/** A genuinely empty project: no layouts and no default until the author adds one. */
+export function blankBundle(): ProjectBundle {
+  return baseBundle();
+}
+
+/** Seeded 26-key template used by tests and explicit template flows. */
+export function templateBundle(): ProjectBundle {
+  const main = embeddedPreset(BUILTIN_PRESETS.layouts.filter((item) => item.role === "letters"), "qwerty26");
   const pages = ["number", "symbols"]
     .map((id) => BUILTIN_PRESETS.layouts.find((item) => item.id === id))
     .filter((item): item is LayoutPreset => Boolean(item))
@@ -527,21 +555,10 @@ export function defaultBundle(): ProjectBundle {
     .filter((item): item is MacroPreset => Boolean(item))
     .map((item) => structuredClone(item));
   return {
-    format: "trime-theme-bundle",
-    schemaVersion: 3,
-    id: "default",
-    meta: { name: "My Trime Theme", author: "trime-theme-editor", description: "", configVersion: "3.0" },
-    devices: [{ id: "phone", kind: "phone", orientation: "portrait" }],
-    schemaBindings: [],
-    mainLayoutId: main.id,
-    pageIds: pages.map((item) => item.id),
-    theme: defaultThemeSelection(),
-    variant: "dark",
-    customThemeCards: [],
-    keyStyles: defaultKeyStyles(),
+    ...baseBundle(),
+    defaultLayoutId: main.id,
+    layoutGroupIds: [main.id, ...pages.map((item) => item.id)],
     layouts: [main, ...pages],
     macros,
-    chrome: defaultChrome(),
-    passthrough: {},
   };
 }

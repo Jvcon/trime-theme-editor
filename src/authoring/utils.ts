@@ -1,6 +1,6 @@
 import { BUILTIN_PRESETS, DEFAULT_LIQUID, DEFAULT_PREEDIT, DEFAULT_TOOLBAR, DEFAULT_WINDOW, KEY_STYLES } from "./presets";
 import { LAYOUT_RULES } from "./devicePresets";
-import type { ActionRef, ChromeConfig, ChromePatch, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
+import type { ActionRef, ChromeConfig, ChromePatch, KeySlot, KeyStyle, LayoutPreset, LayoutRole, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
 
 function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
   const seen = new Set<string>();
@@ -147,52 +147,63 @@ function normalizeLiquid(input: Partial<LiquidConfig> | undefined, base: LiquidC
   };
 }
 
-/** Adds a catalog layout to the bundle without replacing an existing id. */
+/** Adds a catalog layout to the bundle and its ordered layout group. */
 export function embedLayout(bundle: ProjectBundle, layout: LayoutPreset): LayoutPreset {
+  if (!Array.isArray(bundle.layoutGroupIds)) bundle.layoutGroupIds = [];
   const existing = bundle.layouts.find((item) => item.id === layout.id);
-  if (existing) return existing;
-  const copy = structuredClone(layout);
-  bundle.layouts.push(copy);
-  return copy;
+  const target = existing ?? (() => {
+    const copy = structuredClone(layout);
+    bundle.layouts.push(copy);
+    return copy;
+  })();
+  const isVariant = bundle.layouts.some((item) => item.landscapeId === target.id);
+  if (!isVariant && !bundle.layoutGroupIds.includes(target.id)) {
+    bundle.layoutGroupIds.push(target.id);
+  }
+  return target;
 }
 
+/**
+ * Rebuilds the layout inventory. Every embedded base layout belongs to the
+ * group by definition, so nothing can compile without being visible in the UI.
+ * Landscape variants stay attached to their base and never become group items.
+ */
 export function pruneBundleLayouts(bundle: ProjectBundle): void {
-  const main = bundle.layouts.find((item) => item.id === bundle.mainLayoutId) ?? bundle.layouts[0];
-  if (!main) return;
-  bundle.mainLayoutId = main.id;
-  const pages = bundle.pageIds
-    .map((id) => bundle.layouts.find((item) => item.id === id))
-    .filter((item): item is LayoutPreset => item !== undefined && item.id !== main.id);
-  bundle.pageIds = pages.map((item) => item.id);
+  const byId = new Map(bundle.layouts.map((item) => [item.id, item]));
+  const variantIds = new Set(
+    bundle.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  const group: string[] = [];
+  const push = (id: string | undefined) => {
+    if (!id || group.includes(id) || variantIds.has(id) || !byId.has(id)) return;
+    group.push(id);
+  };
+  for (const id of bundle.layoutGroupIds ?? []) push(id);
+  for (const layout of bundle.layouts) push(layout.id);
+  for (const device of bundle.devices ?? []) push(device.layoutId);
+  for (const binding of bundle.schemaBindings ?? []) push(binding.layoutId);
 
-  // Keep layouts referenced by devices and schema bindings, not just the
-  // current main layout and its pages. They still need to be compiled into
-  // preset_keyboards so alias lookups resolve.
-  const keep = new Set<string>([main.id, ...bundle.pageIds]);
-  for (const device of bundle.devices ?? []) {
-    if (device.mainLayoutId) keep.add(device.mainLayoutId);
+  bundle.layoutGroupIds = group;
+  if (bundle.defaultLayoutId && !group.includes(bundle.defaultLayoutId)) {
+    delete bundle.defaultLayoutId;
   }
-  for (const binding of bundle.schemaBindings ?? []) {
-    if (binding.layoutId) keep.add(binding.layoutId);
-  }
-  // Landscape variants are referenced by their base layout, not by pages or
-  // devices directly; keep them or every prune would delete the variant.
-  for (const layout of bundle.layouts) {
-    if (layout.landscapeId && keep.has(layout.id)) keep.add(layout.landscapeId);
-  }
-  // Never auto-delete layouts the author created or edited. Switching the main
-  // layout, changing a device, etc. must not discard the previous custom work.
-  // Explicit actions (delete layout / remove page) filter them out before this.
-  const authored = new Set<string>(bundle.layouts.filter((item) => !item.builtin).map((item) => item.id));
-  for (const layout of bundle.layouts) {
-    if (!layout.landscapeId) continue;
-    if (authored.has(layout.id)) authored.add(layout.landscapeId);
-    if (authored.has(layout.landscapeId)) authored.add(layout.id);
-  }
-  for (const id of authored) keep.add(id);
 
-  const extras = bundle.layouts.filter((item) => keep.has(item.id) && item.id !== main.id && !bundle.pageIds.includes(item.id));
-  bundle.layouts = [main, ...pages, ...extras];
+  const bases: LayoutPreset[] = [];
+  const variants: LayoutPreset[] = [];
+  for (const id of group) {
+    const base = byId.get(id);
+    if (!base) continue;
+    if (base.landscapeId) {
+      const variant = byId.get(base.landscapeId);
+      if (!variant || variant.id === base.id || group.includes(variant.id)) {
+        delete base.landscapeId;
+      } else {
+        variants.push(variant);
+      }
+    }
+    bases.push(base);
+  }
+  bundle.layouts = [...bases, ...variants];
 }
 
 const DEVICE_KINDS = ["phone", "fold", "tablet"] as const;
@@ -218,13 +229,15 @@ function normalizeDevices(input: ProjectBundle["devices"] | undefined): ProjectB
       id = `${id}-${index}`;
     }
     seen.add(id);
+    const legacyDevice = device as typeof device & { mainLayoutId?: string };
+    const layoutId = String(legacyDevice.layoutId ?? legacyDevice.mainLayoutId ?? "").trim();
     output.push({
       id,
       kind,
       orientation,
       ...(foldState ? { foldState } : {}),
       ...(device.metrics ? { metrics: device.metrics } : {}),
-      ...(device.mainLayoutId ? { mainLayoutId: device.mainLayoutId } : {}),
+      ...(layoutId ? { layoutId } : {}),
     });
   }
   return output.length > 0 ? output : [{ id: "phone", kind: "phone", orientation: "portrait" }];
@@ -357,18 +370,23 @@ function normalizeTheme(input: unknown): { theme: ThemeSelection; custom: ThemeC
   };
 }
 
-function fallbackLayouts(): LayoutPreset[] {
-  return BUILTIN_PRESETS.layouts.slice(0, 3).map((item) => structuredClone(item));
+function normalizeLayoutRole(layout: LayoutPreset & { pageRole?: unknown }): LayoutRole {
+  if (layout.role === "letters" || layout.role === "number" || layout.role === "symbols") return layout.role;
+  if (layout.pageRole === "number" || layout.pageRole === "symbols") return layout.pageRole;
+  if (/number|num|123|digit/i.test(layout.id)) return "number";
+  if (/symbol|punct|emoji/i.test(layout.id)) return "symbols";
+  return "letters";
 }
 
 /**
- * Normalizes a v2 or v3 bundle in place and returns it. v2 cards held a
- * light/dark pair; v3 splits them into independent single-scheme cards.
+ * Normalizes a v2, v3, or v4 bundle and returns it. v2 cards held a
+ * light/dark pair; v3 split them into single-scheme cards; v4 replaces
+ * mainLayoutId/pageIds with an ordered layout group and an optional default.
  */
 export function normalizeBundle(input: ProjectBundle): ProjectBundle {
   const bundle = structuredClone(input);
   bundle.format = "trime-theme-bundle";
-  bundle.schemaVersion = 3;
+  bundle.schemaVersion = 4;
   bundle.id = bundle.id || "trime-theme";
   bundle.meta = {
     ...bundle.meta,
@@ -399,11 +417,13 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
     delete (style as KeyStyle & { disabled?: unknown }).disabled;
   }
   bundle.macros = Array.isArray(bundle.macros) ? bundle.macros : [];
-  bundle.layouts = Array.isArray(bundle.layouts) && bundle.layouts.length > 0 ? bundle.layouts : fallbackLayouts();
+  bundle.layouts = Array.isArray(bundle.layouts) ? bundle.layouts : [];
   for (const layout of bundle.layouts) {
-    for (const row of layout.rows) {
-      row.keys = row.keys.map(normalizeKeySlot);
+    for (const row of Array.isArray(layout.rows) ? layout.rows : []) {
+      row.keys = (Array.isArray(row.keys) ? row.keys : []).map(normalizeKeySlot);
     }
+    layout.role = normalizeLayoutRole(layout as LayoutPreset & { pageRole?: unknown });
+    delete (layout as LayoutPreset & { pageRole?: unknown }).pageRole;
   }
   // Landscape variants are an additive, optional field. Drop dangling or
   // self-referencing ids so the bundle stays self-contained.
@@ -413,15 +433,52 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
       delete layout.landscapeId;
     }
   }
-  bundle.mainLayoutId = bundle.mainLayoutId || bundle.layouts.find((item) => item.pageRole === "main")?.id || bundle.layouts[0].id;
-  bundle.pageIds = (Array.isArray(bundle.pageIds) ? bundle.pageIds : []).filter((id) => id !== bundle.mainLayoutId);
+  const variantOwner = new Map<string, string>();
+  for (const layout of bundle.layouts) {
+    if (layout.landscapeId) variantOwner.set(layout.landscapeId, layout.id);
+  }
+
+  // v3 stored a main layout plus pages. v4 uses one ordered group that
+  // includes the default. Every embedded base is a group member so the UI
+  // inventory matches what compiles.
+  const legacy = input as ProjectBundle & { mainLayoutId?: string; pageIds?: string[] };
+  const legacyDefault = legacy.defaultLayoutId ?? legacy.mainLayoutId;
+  const legacyGroup = Array.isArray(legacy.layoutGroupIds) ? legacy.layoutGroupIds : undefined;
+  const legacyPages = Array.isArray(legacy.pageIds) ? legacy.pageIds : [];
+  const variantIds = new Set([...variantOwner.keys()]);
+  const group: string[] = [];
+  const addToGroup = (id: string | undefined) => {
+    if (!id || group.includes(id) || variantIds.has(id) || !layoutIds.has(id)) return;
+    group.push(id);
+  };
+  if (legacyGroup) {
+    for (const id of legacyGroup) addToGroup(id);
+  } else {
+    addToGroup(legacyDefault);
+    for (const id of legacyPages) addToGroup(id);
+  }
+  for (const layout of bundle.layouts) addToGroup(layout.id);
+  bundle.layoutGroupIds = group;
+  if (legacyDefault && group.includes(legacyDefault)) bundle.defaultLayoutId = legacyDefault;
+  else delete bundle.defaultLayoutId;
+  delete (bundle as ProjectBundle & { mainLayoutId?: string }).mainLayoutId;
+  delete (bundle as ProjectBundle & { pageIds?: string[] }).pageIds;
+
   bundle.devices = normalizeDevices(bundle.devices);
+  for (const device of bundle.devices) {
+    if (device.layoutId && variantOwner.has(device.layoutId)) {
+      device.layoutId = variantOwner.get(device.layoutId);
+    }
+  }
   bundle.schemaBindings = (Array.isArray(bundle.schemaBindings) ? bundle.schemaBindings : [])
-    .map((binding) => ({
-      schemaId: String(binding.schemaId ?? "").trim(),
-      layoutId: String(binding.layoutId ?? ""),
-      ...(binding.alias ? { alias: String(binding.alias).trim() } : {}),
-    }))
+    .map((binding) => {
+      const layoutId = String(binding.layoutId ?? "");
+      return {
+        schemaId: String(binding.schemaId ?? "").trim(),
+        layoutId: variantOwner.get(layoutId) ?? layoutId,
+        ...(binding.alias ? { alias: String(binding.alias).trim() } : {}),
+      };
+    })
     .filter((binding) => Boolean(binding.layoutId));
   bundle.chrome = normalizeChrome(bundle.chrome);
   bundle.customPresetKeys = bundle.customPresetKeys ?? {};
@@ -444,7 +501,9 @@ export function actionLabel(action: ActionRef | undefined, libs?: PresetLibrarie
     case "text": return action.value || "∅";
     case "key": return action.value;
     case "macro": return libs?.macros.find((item) => item.id === action.id)?.name ?? action.id;
-    case "page": return libs?.layouts.find((item) => item.id === action.id)?.name ?? `Page ${action.id}`;
+    case "page": return action.id === "main"
+      ? "默认布局（按设备解析）"
+      : libs?.layouts.find((item) => item.id === action.id)?.name ?? `Page ${action.id}`;
     case "toggle": return `Toggle ${action.value}`;
     case "command": return `Command ${action.value}`;
     case "preset": return action.value;
@@ -473,24 +532,32 @@ export function keyStyleColors(card: ThemeCardPreset, keyStyles: Record<string, 
   };
 }
 
-export function mainLayout(bundle: ProjectBundle, libs = libraries(bundle)): LayoutPreset {
-  return libs.layouts.find((item) => item.id === bundle.mainLayoutId)
-    ?? bundle.layouts.find((item) => item.id === bundle.mainLayoutId)
-    ?? libs.layouts[0];
+/** Project default entry, or undefined when devices bind their own layouts. */
+export function defaultLayout(bundle: ProjectBundle): LayoutPreset | undefined {
+  if (!bundle.defaultLayoutId) return undefined;
+  return bundle.layouts.find((item) => item.id === bundle.defaultLayoutId);
 }
 
 export function findLayout(bundle: ProjectBundle, id: string, libs = libraries(bundle)): LayoutPreset | undefined {
   return libs.layouts.find((item) => item.id === id);
 }
 
-export function pages(bundle: ProjectBundle, libs = libraries(bundle)): LayoutPreset[] {
-  const main = mainLayout(bundle, libs);
-  const result: LayoutPreset[] = [main];
-  for (const id of bundle.pageIds ?? []) {
-    const layout = libs.layouts.find((item) => item.id === id);
-    if (layout && layout.id !== main.id) result.push(layout);
-  }
-  return result;
+/** Ordered layout group. Order is authoring UI only. */
+export function groupLayouts(bundle: ProjectBundle): LayoutPreset[] {
+  const byId = new Map(bundle.layouts.map((item) => [item.id, item]));
+  return (bundle.layoutGroupIds ?? [])
+    .map((id) => byId.get(id))
+    .filter((item): item is LayoutPreset => Boolean(item));
+}
+
+/** Group members other than the optional project default. */
+export function pageLayouts(bundle: ProjectBundle): LayoutPreset[] {
+  return groupLayouts(bundle).filter((item) => item.id !== bundle.defaultLayoutId);
+}
+
+/** Layout to select when opening the layout step. */
+export function firstLayoutId(bundle: ProjectBundle): string {
+  return bundle.defaultLayoutId ?? bundle.layoutGroupIds[0] ?? "";
 }
 
 export function uniqueId(prefix: string, taken: string[]): string {
@@ -562,7 +629,7 @@ export function newLayout(name: string): LayoutPreset {
     name,
     version: 1,
     builtin: false,
-    pageRole: "main",
+    role: "letters",
     rows: [
       {
         height: 52,

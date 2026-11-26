@@ -1,6 +1,6 @@
 import type { ProjectBundle } from "./types";
 import { LAYOUT_RULES } from "./devicePresets";
-import { isPlaceholder, libraries } from "./utils";
+import { groupLayouts, isPlaceholder, libraries } from "./utils";
 
 export type IssueArea = "theme" | "layouts" | "interface" | "devices" | "export";
 
@@ -17,7 +17,9 @@ export type Issue = {
 export function validateProject(project: ProjectBundle): Issue[] {
   const issues: Issue[] = [];
   const macroIds = new Set(project.macros.map((item) => item.id));
-  const layoutIds = new Set(project.layouts.map((item) => item.id));
+  const allLayoutIds = new Set(project.layouts.map((item) => item.id));
+  const group = groupLayouts(project);
+  const layoutIds = new Set(group.map((item) => item.id));
   // "main" is a compiler-provided page target (Keyboard_main), not a layout.
   const pageTargets = new Set<string>([...layoutIds, "main"]);
   const libs = libraries(project);
@@ -28,16 +30,30 @@ export function validateProject(project: ProjectBundle): Issue[] {
     ...project.macros.map((item) => `macro_${sanitize(item.id)}`),
   ]);
   for (const layout of project.layouts) knownPresets.add(`Keyboard_${sanitize(layout.id)}`);
-  for (const id of [project.mainLayoutId, ...project.pageIds]) knownPresets.add(`Keyboard_${sanitize(id)}`);
+  knownPresets.add("Keyboard_main");
+  knownPresets.add("Keyboard_default");
 
   const variantIds = new Set(
     project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
   );
+  if (group.length === 0) {
+    issues.push({ level: "warning", area: "layouts", message: "还没有布局；添加布局并指定默认布局（或给每台设备单独绑定布局）" });
+  }
+  const inheritingDevices = project.devices.filter((device) => !device.layoutId).length;
+  if (group.length > 0 && !project.defaultLayoutId && inheritingDevices > 0) {
+    issues.push({ level: "warning", area: "layouts", message: `未设置默认布局；${inheritingDevices} 台未单独绑定布局的设备将无法编译` });
+  }
+  if (project.defaultLayoutId && !layoutIds.has(project.defaultLayoutId)) {
+    issues.push({ level: "error", area: "layouts", message: `默认布局不存在：${project.defaultLayoutId}` });
+  }
   for (const layout of project.layouts) {
+    if (!variantIds.has(layout.id) && !layoutIds.has(layout.id)) {
+      issues.push({ level: "warning", area: "layouts", message: `${layout.name} 未加入布局组；保存或编译时会自动加入` });
+    }
     if (!layout.landscapeId) continue;
     if (layout.landscapeId === layout.id) {
       issues.push({ level: "error", area: "layouts", message: `${layout.name} 的横屏变体指向了自己` });
-    } else if (!layoutIds.has(layout.landscapeId)) {
+    } else if (!allLayoutIds.has(layout.landscapeId)) {
       issues.push({ level: "error", area: "layouts", message: `${layout.name} 的横屏变体不存在：${layout.landscapeId}` });
     }
     if (variantIds.has(layout.id)) {
@@ -66,15 +82,7 @@ export function validateProject(project: ProjectBundle): Issue[] {
     }
   }
 
-  if (!project.layouts.some((item) => item.id === project.mainLayoutId)) {
-    issues.push({ level: "error", area: "layouts", message: `主布局不存在：${project.mainLayoutId}` });
-  }
-  for (const id of project.pageIds) {
-    if (!layoutIds.has(id)) issues.push({ level: "error", area: "layouts", message: `页面引用的布局不存在：${id}` });
-    if (id === project.mainLayoutId) issues.push({ level: "warning", area: "layouts", message: `页面与主布局重复：${id}` });
-  }
-
-  // Check every embedded layout: main, pages, device bindings, variants, and
+  // Check every embedded layout: group members, device bindings, variants, and
   // schema-binding targets. Pruning keeps the bundle small, so this is safe.
   for (const layout of project.layouts) {
     layout.rows.forEach((row, rowIndex) => {
@@ -112,12 +120,17 @@ export function validateProject(project: ProjectBundle): Issue[] {
       issues.push({ level: "error", area: "devices", message: `device id 重复：${device.id}` });
     }
     deviceIds.add(device.id);
-    if (device.mainLayoutId && !layoutIds.has(device.mainLayoutId)) {
-      issues.push({ level: "error", area: "devices", message: `device ${device.id} 引用了不存在的布局：${device.mainLayoutId}` });
+    if (device.layoutId && variantIds.has(device.layoutId)) {
+      issues.push({ level: "error", area: "devices", message: `device ${device.id} 绑定了横屏变体，应绑定其基础布局：${device.layoutId}` });
+    } else if (device.layoutId && !layoutIds.has(device.layoutId)) {
+      issues.push({ level: "error", area: "devices", message: `device ${device.id} 引用了不存在的布局：${device.layoutId}` });
     }
-    if (device.orientation === "landscape") {
-      const baseId = device.mainLayoutId ?? project.mainLayoutId;
-      const base = libs.layouts.find((item) => item.id === baseId);
+    const baseId = device.layoutId ?? project.defaultLayoutId;
+    if (!baseId) {
+      issues.push({ level: "error", area: "devices", message: `device ${device.id} 未关联布局，且项目未设置默认布局` });
+    }
+    if (device.orientation === "landscape" && baseId && layoutIds.has(baseId)) {
+      const base = group.find((item) => item.id === baseId) ?? libs.layouts.find((item) => item.id === baseId);
       if (base && !base.landscapeId) {
         issues.push({
           level: "warning",
@@ -151,7 +164,7 @@ export function validateProject(project: ProjectBundle): Issue[] {
     for (const [id, value] of Object.entries(rawKeyboards as Record<string, unknown>)) {
       const entry = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
       const target = entry?.import_preset;
-      if (typeof target === "string" && target && !layoutIds.has(target)) {
+      if (typeof target === "string" && target && !allLayoutIds.has(target)) {
         issues.push({ level: "error", area: "export", message: `preset_keyboards alias ${id} 引用了不存在的布局：${target}` });
       }
     }

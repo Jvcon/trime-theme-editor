@@ -14,8 +14,10 @@
 | Fold · 折叠 | fold | portrait | folded |
 | Fold · 展开 | fold | portrait | unfolded |
 
-设备条目只保存 `id / kind / orientation / foldState / metrics / mainLayoutId`。
-`mainLayoutId` 绑定的是**基础布局（竖屏）**；横屏变体由布局组自动解析。
+设备条目只保存 `id / kind / orientation / foldState / metrics / layoutId`。
+`layoutId` 绑定的是**基础布局（与朝向无关）**；省略时继承项目
+`defaultLayoutId`。项目默认布局本身是可选的：只要每台设备都能解析出一个
+布局（设备绑定或默认布局），就可以导出。横屏变体由布局组自动解析。
 
 ## 2. 布局解析规则
 

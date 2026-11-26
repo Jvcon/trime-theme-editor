@@ -1,5 +1,5 @@
 import YAML from "yaml";
-import { defaultBundle } from "./compiler";
+import { blankBundle } from "./compiler";
 import { KEYCODES } from "./catalogs";
 import { expandThemeDsl, ThemeDslError } from "./dsl";
 import { BUILTIN_PRESETS } from "./presets";
@@ -224,14 +224,15 @@ function importMacros(doc: Dict, report: ImportReport): {
   return { macros, byToken, rawPresetKeys, macroPassthrough, rawTokens };
 }
 
-function importAction(raw: unknown, ctx: { byToken: Map<string, string>; rawTokens: Set<string>; layoutIds: Map<string, string>; defaultId: string; warnings: string[] }): ActionRef | undefined {
+function importAction(raw: unknown, ctx: { byToken: Map<string, string>; rawTokens: Set<string>; layoutIds: Map<string, string>; warnings: string[] }): ActionRef | undefined {
   const token = text(raw);
   if (!token) return undefined;
   if (ctx.byToken.has(token)) return { kind: "macro", id: ctx.byToken.get(token)! };
   if (ctx.rawTokens.has(token)) return { kind: "preset", value: token };
+  if (token === "Keyboard_default") return { kind: "page", id: "main" };
   if (token.startsWith("Keyboard_")) {
     const original = token.slice("Keyboard_".length);
-    const mapped = ctx.layoutIds.get(original) ?? (original === "default" ? ctx.defaultId : original);
+    const mapped = ctx.layoutIds.get(original) ?? original;
     return { kind: "page", id: mapped };
   }
   if (token.startsWith("toggle_")) return { kind: "toggle", value: token.slice("toggle_".length) };
@@ -243,7 +244,7 @@ function importAction(raw: unknown, ctx: { byToken: Map<string, string>; rawToke
 function convertKeyboard(
   id: string,
   entry: Dict,
-  ctx: { byToken: Map<string, string>; rawTokens: Set<string>; layoutIds: Map<string, string>; defaultId: string; warnings: string[] },
+  ctx: { byToken: Map<string, string>; rawTokens: Set<string>; layoutIds: Map<string, string>; warnings: string[] },
 ): LayoutPreset {
   const rawKeys = Array.isArray(entry.keys) ? entry.keys : [];
   const rows: LayoutRow[] = [];
@@ -290,7 +291,7 @@ function convertKeyboard(
   if (rows.length === 0) rows.push({ height: 52, keys: [{ style: "default", width: 100, click: { kind: "char", value: "a" }, label: "A" }] });
 
   const name = text(entry.name) || id;
-  const role = /number|num|123|digit/i.test(id) ? "number" : /symbol|punct|emoji/i.test(id) ? "symbols" : "number";
+  const role = /number|num|123|digit/i.test(id) ? "number" : /symbol|punct|emoji/i.test(id) ? "symbols" : "letters";
   const passthrough = pickUnknown(entry, LAYOUT_KNOWN_FIELDS);
   return {
     kind: "layout",
@@ -298,7 +299,7 @@ function convertKeyboard(
     name,
     version: 1,
     builtin: false,
-    pageRole: role as LayoutPreset["pageRole"],
+    role: role as LayoutPreset["role"],
     asciiMode: number(entry.ascii_mode) ?? 0,
     rows,
     ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
@@ -523,7 +524,7 @@ export function importTrimeYaml(
     const message = "没有可用 preset_keyboards，导入为空项目。";
     warnings.push(message);
     report.needsReview.push(message);
-    const empty = defaultBundle();
+    const empty = blankBundle();
     empty.id = `imported-${slug(fileName.replace(/\.ya?ml$/i, ""))}`;
     empty.meta.name = text(doc.name) || fileName.replace(/\.ya?ml$/i, "");
     empty.meta.author = text(doc.author) || empty.meta.author;
@@ -561,7 +562,7 @@ export function importTrimeYaml(
     layoutIds.set(resolvedId, finalId);
   }
   const mainId = finalByResolved.get(resolvedMainId)!;
-  const ctx = { byToken, rawTokens, layoutIds, defaultId: mainId, warnings };
+  const ctx = { byToken, rawTokens, layoutIds, warnings };
 
   const layouts: LayoutPreset[] = [];
   const seenLayouts = new Set<string>();
@@ -571,7 +572,6 @@ export function importTrimeYaml(
     seenLayouts.add(resolved.id);
     const finalId = finalByResolved.get(resolved.id)!;
     const layout = convertKeyboard(finalId, resolved.entry, ctx);
-    if (resolved.id === resolvedMainId) layout.pageRole = "main";
     layouts.push(layout);
   }
 
@@ -588,8 +588,7 @@ export function importTrimeYaml(
     warnings.push(message);
     report.dropped.push(message);
   }
-  const pageIds = importedLayouts.filter((item) => item.id !== mainLayout.id).map((item) => item.id);
-  const project = defaultBundle();
+  const project = blankBundle();
   project.id = `imported-${slug(fileName.replace(/\.ya?ml$/i, ""))}`;
   project.meta = {
     name: text(doc.name) || fileName.replace(/\.ya?ml$/i, ""),
@@ -597,8 +596,8 @@ export function importTrimeYaml(
     description: `Imported from ${fileName}`,
     configVersion: text(doc.config_version) || "3.0",
   };
-  project.mainLayoutId = mainLayout.id;
-  project.pageIds = pageIds;
+  project.defaultLayoutId = mainLayout.id;
+  project.layoutGroupIds = importedLayouts.map((item) => item.id);
   project.layouts = importedLayouts;
   project.macros = macros;
   project.customPresetKeys = rawPresetKeys;

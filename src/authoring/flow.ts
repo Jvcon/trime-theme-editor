@@ -1,7 +1,7 @@
 import type { ProjectBundle } from "./types";
 import { compileBundle } from "./compiler";
 import { validateTrimeYaml } from "./schema";
-import { defaultChrome, libraries, REQUIRED_THEME_TOKENS } from "./utils";
+import { defaultChrome, defaultLayout, groupLayouts, REQUIRED_THEME_TOKENS } from "./utils";
 import { validateProject, type Issue } from "./validation";
 
 export type StepId = "theme" | "layouts" | "interface" | "devices" | "export";
@@ -44,7 +44,6 @@ function reasonsFromIssues(issues: Issue[], fallback: string): string[] {
  * step headers, and export summary all read the same source.
  */
 export function stepStatuses(project: ProjectBundle, options: StepOptions = {}): StepStatus[] {
-  const libs = libraries(project);
   const issues = validateProject(project);
   const byArea = (area: Issue["area"]) => issues.filter((issue) => issue.area === area);
   const exportIssues: Issue[] = [...issues];
@@ -76,8 +75,12 @@ export function stepStatuses(project: ProjectBundle, options: StepOptions = {}):
   const layoutIssues = byArea("layouts");
   const interfaceIssues = byArea("interface");
   const deviceIssues = byArea("devices");
-  const main = libs.layouts.find((item) => item.id === project.mainLayoutId);
+  const main = defaultLayout(project);
+  const group = groupLayouts(project);
   const landscapeCount = project.devices.filter((device) => device.orientation === "landscape").length;
+  const baseSummary = group.length === 0
+    ? "未添加布局"
+    : `${main ? main.name : "未设默认布局"} · ${group.length} 个布局`;
 
   const chromeIsDefault = JSON.stringify(project.chrome ?? defaultChrome()) === JSON.stringify(defaultChrome());
 
@@ -95,8 +98,8 @@ export function stepStatuses(project: ProjectBundle, options: StepOptions = {}):
       label: "布局",
       optional: false,
       state: stateFromIssues(layoutIssues),
-      reasons: reasonsFromIssues(layoutIssues, `主布局 ${main?.name ?? "—"} · ${project.pageIds.length} 个页面`),
-      summary: main ? `${main.name} · ${project.pageIds.length} 页` : "未选择主布局",
+      reasons: reasonsFromIssues(layoutIssues, baseSummary),
+      summary: baseSummary,
     },
     {
       id: "interface",

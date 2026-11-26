@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { compileBundle, defaultBundle } from "../src/authoring/compiler";
+import { compileBundle, templateBundle } from "../src/authoring/compiler";
 import { BUILTIN_PRESETS } from "../src/authoring/presets";
 import { normalizeBundle, REQUIRED_THEME_TOKENS } from "../src/authoring/utils";
 
@@ -34,7 +34,7 @@ describe("built-in theme cards", () => {
     for (const item of BUILTIN_PRESETS.themeCards) {
       expect(item.states).not.toHaveProperty("hover");
     }
-    const legacy = structuredClone(defaultBundle()) as unknown as {
+    const legacy = structuredClone(templateBundle()) as unknown as {
       keyStyles: Record<string, Record<string, unknown>>;
     };
     legacy.keyStyles.default.disabled = { background: "surfaceAlt", text: "textMuted" };
@@ -66,7 +66,7 @@ describe("built-in theme cards", () => {
 
 describe("light/dark theme selection", () => {
   it("compiles the selected light and dark cards independently", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     bundle.theme.light = structuredClone(card("catppuccin-latte"));
     bundle.theme.dark = structuredClone(card("catppuccin-mocha"));
     const yaml = YAML.parse(compileBundle(bundle)) as {
@@ -79,7 +79,7 @@ describe("light/dark theme selection", () => {
   });
 
   it("does not let a light edit change the dark scheme", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     bundle.theme.dark = structuredClone(card("solarized-dark"));
     bundle.theme.light.tokens.bg = "#123456";
     const yaml = YAML.parse(compileBundle(bundle)) as {
@@ -90,7 +90,7 @@ describe("light/dark theme selection", () => {
   });
 
   it("emits only Trime-supported style keys into color schemes", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     bundle.keyStyles["custom-1"] = {
       id: "custom-1",
       name: "Custom",
@@ -117,7 +117,7 @@ describe("light/dark theme selection", () => {
 
 describe("v2 theme migration", () => {
   it("splits legacy variants and keeps built-in values", () => {
-    const legacy = structuredClone(defaultBundle()) as unknown as Record<string, unknown>;
+    const legacy = structuredClone(templateBundle()) as unknown as Record<string, unknown>;
     legacy.schemaVersion = 2;
     legacy.theme = {
       kind: "theme-card",
@@ -133,7 +133,7 @@ describe("v2 theme migration", () => {
     delete legacy.customThemeCards;
 
     const normalized = normalizeBundle(legacy as never);
-    expect(normalized.schemaVersion).toBe(3);
+    expect(normalized.schemaVersion).toBe(4);
     expect(normalized.theme.light.id).toBe("alucard");
     expect(normalized.theme.light.builtin).toBe(true);
     expect(normalized.theme.dark.id).toBe("dracula");
@@ -142,7 +142,7 @@ describe("v2 theme migration", () => {
   });
 
   it("keeps selected custom cards in the project library", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     bundle.theme.light = {
       ...structuredClone(card("alucard")),
       id: "custom-light",
@@ -156,7 +156,7 @@ describe("v2 theme migration", () => {
   });
 
   it("preserves edited legacy variants as custom cards", () => {
-    const legacy = structuredClone(defaultBundle()) as unknown as Record<string, unknown>;
+    const legacy = structuredClone(templateBundle()) as unknown as Record<string, unknown>;
     legacy.schemaVersion = 2;
     legacy.theme = {
       kind: "theme-card",

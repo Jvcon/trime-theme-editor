@@ -15,15 +15,15 @@ export function LandingScreen({ projects, onNew, onOpen, onImportYaml }: {
             <Sparkles className="size-4 text-primary" /> 开始一个 Trime 主题
           </div>
           <p className="mb-4 text-caption text-muted-foreground">
-            不需要从空白开始：选一个内置模板，或导入现有的 <code>trime.yaml</code> 继续编辑。
+            新建空白项目后，在布局步骤添加内置键盘 preset；也可以导入现有的 <code>trime.yaml</code> 继续编辑。
             所有草稿只保存在本机浏览器。
           </p>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <button type="button" onClick={onNew} className="rounded-xl border border-border bg-muted/10 p-panel text-left hover:border-primary/60 hover:bg-primary/5">
               <Plus className="mb-2 size-5 text-primary" />
-              <div className="text-xs font-semibold">从模板开始</div>
-              <p className="mt-1 text-2xs text-muted-foreground">qwerty26 主布局 + Alucard / Dracula 双方案，默认已可用。</p>
+              <div className="text-xs font-semibold">新建空白项目</div>
+              <p className="mt-1 text-2xs text-muted-foreground">Alucard / Dracula 双方案；布局在第二步从内置 preset 添加。</p>
             </button>
 
             <label className="cursor-pointer rounded-xl border border-border bg-muted/10 p-panel text-left transition-colors hover:border-primary/60 hover:bg-primary/5 focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">

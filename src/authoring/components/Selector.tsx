@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CHARACTER_SETS, COMMANDS, KEYCODES, TOGGLES } from "../catalogs";
-import type { ActionRef, PresetLibraries } from "../types";
+import type { ActionRef, LayoutPreset, PresetLibraries } from "../types";
 
 export const BEHAVIORS = [
   ["click", "Click"],
@@ -20,12 +20,14 @@ export const BEHAVIORS = [
 
 type Props = {
   libs: PresetLibraries;
+  /** Layouts reachable from a Page action. Defaults to the catalog when omitted. */
+  pageTargets?: LayoutPreset[];
   targetBehavior: string;
   setTargetBehavior: (value: string) => void;
   onAssign: (action: ActionRef | undefined) => void;
 };
 
-export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: Props) {
+export function Selector({ libs, pageTargets, targetBehavior, setTargetBehavior, onAssign }: Props) {
   const [tab, setTab] = useState("characters");
   const [setId, setSetId] = useState(CHARACTER_SETS[0].id);
   const [query, setQuery] = useState("");
@@ -75,7 +77,7 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
           <TabsTrigger value="characters">Characters</TabsTrigger>
           <TabsTrigger value="keycodes">Keycodes</TabsTrigger>
           <TabsTrigger value="macros">Macros</TabsTrigger>
-          <TabsTrigger value="pages">Pages</TabsTrigger>
+          <TabsTrigger value="pages">布局</TabsTrigger>
           <TabsTrigger value="options">Options</TabsTrigger>
         </TabsList>
 
@@ -125,12 +127,27 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
 
           <TabsContent value="pages" className="mt-0 max-h-52 overflow-auto">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-1">
-              {libs.layouts.map((item) => (
-                <button key={item.id} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "page", id: item.id })}>
-                  {item.name}
-                  <span className="block text-4xs text-muted-foreground">{item.pageRole}</span>
-                </button>
-              ))}
+              {pageTargets ? (
+                <>
+                  <button type="button" className="min-h-control whitespace-normal break-words rounded border border-primary/40 bg-primary/5 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "page", id: "main" })}>
+                    默认布局
+                    <span className="block text-4xs text-muted-foreground">按设备解析</span>
+                  </button>
+                  {pageTargets.map((item) => (
+                    <button key={item.id} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "page", id: item.id })}>
+                      {item.name}
+                      <span className="block text-4xs text-muted-foreground">{item.role ?? "letters"}</span>
+                    </button>
+                  ))}
+                </>
+              ) : (
+                libs.layouts.map((item) => (
+                  <button key={item.id} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "page", id: item.id })}>
+                    {item.name}
+                    <span className="block text-4xs text-muted-foreground">{item.role ?? "letters"}</span>
+                  </button>
+                ))
+              )}
             </div>
           </TabsContent>
 

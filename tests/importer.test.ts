@@ -28,15 +28,15 @@ preset_keys:
 `;
 
 describe("importTrimeYaml", () => {
-  it("returns a v3 bundle with embedded presets", () => {
+  it("returns a v4 bundle with embedded presets", () => {
     const { project } = importTrimeYaml(SOURCE, "trime.yaml");
     expect(project.format).toBe("trime-theme-bundle");
-    expect(project.schemaVersion).toBe(3);
+    expect(project.schemaVersion).toBe(4);
     expect(project.theme.light.id).toContain("imported-card");
     expect(project.theme.dark.id).toContain("imported-card");
     expect(project.theme.light.builtin).toBe(false);
     expect(project.theme.dark.builtin).toBe(false);
-    expect(project.layouts.map((layout) => layout.id)).toContain(project.mainLayoutId);
+    expect(project.layouts.map((layout) => layout.id)).toContain(project.defaultLayoutId);
     expect(project.macros.map((macro) => macro.id)).toContain("macro_hello");
   });
 
@@ -46,6 +46,19 @@ describe("importTrimeYaml", () => {
     expect(yaml).toContain("name: Imported Theme");
     expect(yaml).toContain("macro_hello");
     expect(yaml).toContain("preset_keyboards:");
+  });
+
+  it("maps Keyboard_default to the device-resolved main target", () => {
+    const source = `
+name: Main target
+preset_keyboards:
+  default:
+    keys:
+      - { click: Keyboard_default, width: 100, label: 返回 }
+`;
+    const { project } = importTrimeYaml(source, "main.yaml");
+    const key = project.layouts[0]?.rows[0]?.keys[0];
+    expect(key?.click).toEqual({ kind: "page", id: "main" });
   });
 
   it("imports width-only keys as placeholders", () => {
@@ -58,7 +71,7 @@ preset_keyboards:
       - { width: 50 }
 `;
     const { project } = importTrimeYaml(source, "spacer.yaml");
-    const layout = project.layouts.find((item) => item.id === project.mainLayoutId);
+    const layout = project.layouts.find((item) => item.id === project.defaultLayoutId);
     const slots = layout?.rows.flatMap((row) => row.keys) ?? [];
     expect(slots[1]).toEqual({ kind: "placeholder", width: 50 });
   });

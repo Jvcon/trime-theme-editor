@@ -301,12 +301,12 @@ const nineRows: LayoutRow[] = [
 ];
 
 export const LAYOUTS: LayoutPreset[] = [
-  { kind: "layout", id: "qwerty26", name: "26 键", version: 1, builtin: true, pageRole: "main", rows: mainRows },
-  { kind: "layout", id: "qwerty18", name: "18 键", version: 1, builtin: true, pageRole: "main", rows: eighteenRows },
-  { kind: "layout", id: "qwerty14", name: "14 键", version: 1, builtin: true, pageRole: "main", rows: fourteenRows },
-  { kind: "layout", id: "qwerty9", name: "9 键", version: 1, builtin: true, pageRole: "main", rows: nineRows },
-  { kind: "layout", id: "number", name: "数字", version: 1, builtin: true, pageRole: "number", rows: numberRows },
-  { kind: "layout", id: "symbols", name: "符号", version: 1, builtin: true, pageRole: "symbols", rows: symbolRows },
+  { kind: "layout", id: "qwerty26", name: "26 键", version: 1, builtin: true, role: "letters", rows: mainRows },
+  { kind: "layout", id: "qwerty18", name: "18 键", version: 1, builtin: true, role: "letters", rows: eighteenRows },
+  { kind: "layout", id: "qwerty14", name: "14 键", version: 1, builtin: true, role: "letters", rows: fourteenRows },
+  { kind: "layout", id: "qwerty9", name: "9 键", version: 1, builtin: true, role: "letters", rows: nineRows },
+  { kind: "layout", id: "number", name: "数字", version: 1, builtin: true, role: "number", rows: numberRows },
+  { kind: "layout", id: "symbols", name: "符号", version: 1, builtin: true, role: "symbols", rows: symbolRows },
 ];
 
 

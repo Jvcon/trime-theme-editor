@@ -99,13 +99,16 @@ export type LayoutRow = {
   keys: KeySlot[];
 };
 
+export type LayoutRole = "letters" | "number" | "symbols";
+
 export type LayoutPreset = {
   kind: "layout";
   id: string;
   name: string;
   version: number;
   builtin: boolean;
-  pageRole: "main" | "number" | "symbols";
+  /** Content hint used by pickers and labels. Main/default is a project pointer, not a role. */
+  role?: LayoutRole;
   asciiMode?: number;
   rows: LayoutRow[];
   /**
@@ -134,9 +137,10 @@ export type DeviceProfile = {
   kind: DeviceKind;
   orientation: Orientation;
   foldState?: FoldState;
-  /** Per-device overrides. Phase 1 only stores them; compilation uses the shared values. */
+  /** Per-device metric overrides merged over the project metrics. */
   metrics?: Partial<ProjectMetrics>;
-  mainLayoutId?: string;
+  /** Explicit entry layout for this device. Omitted means inherit the project default. */
+  layoutId?: string;
 };
 
 export type SchemaBinding = {
@@ -255,30 +259,35 @@ export type ChromePatch = {
 };
 
 /**
- * Version 3 project document. This is both the editor document and the
+ * Version 4 project document. This is both the editor document and the
  * exported bundle: it embeds the selected light/dark theme cards, layouts, and
  * macros that the project actually uses instead of referencing a built-in
  * library.
+ *
+ * A layout group is the single inventory of keyboards. Its order is authoring
+ * UI only; Trime itself has no page order. `defaultLayoutId` is an optional
+ * pointer into the group used by devices that do not bind a layout themselves.
  */
 export type ProjectBundle = {
   format: "trime-theme-bundle";
-  schemaVersion: 3;
+  schemaVersion: 4;
   id: string;
   /** Storage-only timestamp. Stripped from exported bundles. */
   updatedAt?: number;
   meta: ProjectMeta;
   devices: DeviceProfile[];
   schemaBindings: SchemaBinding[];
-  mainLayoutId: string;
-  /** Layout ids composed as switchable pages, besides the main layout. */
-  pageIds: string[];
+  /** Optional project default entry. When set it must belong to layoutGroupIds. */
+  defaultLayoutId?: string;
+  /** Ordered layout group (UI order only). Includes defaultLayoutId when present. */
+  layoutGroupIds: string[];
   theme: ThemeSelection;
   /** Preview direction. The compiled light/dark schemes always use theme.light/theme.dark. */
   variant: Variant;
   /** Project-scoped custom theme cards created by copy / new / edit. */
   customThemeCards?: ThemeCardPreset[];
   keyStyles: Record<string, KeyStyle>;
-  /** Embedded main layout plus every page referenced by pageIds. */
+  /** Embedded layout group members plus their landscape variants. */
   layouts: LayoutPreset[];
   /** Embedded macros selected for this project. */
   macros: MacroPreset[];

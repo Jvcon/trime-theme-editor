@@ -42,8 +42,9 @@ export function isLandscapeVariant(bundle: ProjectBundle, layoutId: string): boo
  * layout's variant when present, otherwise falls back to the base layout.
  */
 export function resolveLayoutForDevice(bundle: ProjectBundle, device?: DeviceProfile): LayoutPreset | undefined {
-  const baseId = device?.mainLayoutId ?? bundle.mainLayoutId;
-  const base = bundle.layouts.find((item) => item.id === baseId) ?? bundle.layouts[0];
+  const baseId = device?.layoutId ?? bundle.defaultLayoutId;
+  if (!baseId) return undefined;
+  const base = bundle.layouts.find((item) => item.id === baseId);
   if (!base) return undefined;
   if (device?.orientation !== "landscape" || !base.landscapeId) return base;
   return bundle.layouts.find((item) => item.id === base.landscapeId) ?? base;

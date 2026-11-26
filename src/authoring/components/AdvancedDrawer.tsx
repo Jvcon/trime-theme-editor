@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { PresetLibraries, ProjectBundle } from "../types";
-import { embedLayout, pages, pruneBundleLayouts } from "../utils";
+import { defaultLayout, embedLayout, groupLayouts, pruneBundleLayouts } from "../utils";
 
 type Props = {
   open: boolean;
@@ -25,12 +25,17 @@ function bindingAlias(binding: ProjectBundle["schemaBindings"][number]): string 
 
 export function AdvancedDrawer({ open, onClose, project, libs, mutate, setMessage }: Props) {
   if (!open) return null;
-  const allLayouts = libs.layouts;
-  const allPages = pages(project, libs);
+  const variantIds = new Set(
+    project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  const allLayouts = libs.layouts.filter((item) => !variantIds.has(item.id));
+  const group = groupLayouts(project);
+  const defaultEntry = defaultLayout(project);
+  const fallbackLayoutId = project.defaultLayoutId ?? group[0]?.id ?? "";
 
   const addBinding = () => {
     mutate((draft) => {
-      draft.schemaBindings.push({ schemaId: "", layoutId: draft.mainLayoutId, alias: "" });
+      draft.schemaBindings.push({ schemaId: "", layoutId: fallbackLayoutId, alias: "" });
       pruneBundleLayouts(draft);
     });
   };
@@ -66,8 +71,8 @@ export function AdvancedDrawer({ open, onClose, project, libs, mutate, setMessag
 
   const stats = [
     ["色卡", `浅色 ${project.theme.light.name} / 深色 ${project.theme.dark.name}`, `预览 ${project.variant}`],
-    ["主布局", allPages[0]?.name ?? "—", project.mainLayoutId],
-    ["页面", allPages.map((item) => item.name).join(" / "), `${allPages.length} keyboards`],
+    ["默认布局", defaultEntry?.name ?? "未设置", project.defaultLayoutId ?? "—"],
+    ["布局组", group.map((item) => item.name).join(" / ") || "—", `${group.length} keyboards`],
     ["嵌入布局", String(project.layouts.length), "bundle"],
     ["宏", String(project.macros.length), `${libs.macros.length} available`],
     ["Key styles", String(Object.keys(project.keyStyles).length), "token references"],
@@ -93,7 +98,7 @@ export function AdvancedDrawer({ open, onClose, project, libs, mutate, setMessag
               <h3 className="text-xs font-semibold">输入法绑定</h3>
               <Badge variant="muted">{project.schemaBindings.length}</Badge>
               <span className="text-3xs text-muted-foreground">schema_id → keyset，输出 alias keyboard</span>
-              <Button size="sm" variant="outline" className="ml-auto h-control" onClick={addBinding}><Plus />添加</Button>
+              <Button size="sm" variant="outline" className="ml-auto h-control" disabled={group.length === 0} title={group.length === 0 ? "先在布局步骤添加布局" : undefined} onClick={addBinding}><Plus />添加</Button>
             </div>
             {project.schemaBindings.length === 0 ? (
               <p className="py-2 text-2xs text-muted-foreground">还没有绑定。添加后会生成 <code>schema_luna_pinyin: import_preset: qwerty26</code> 这样的别名。</p>
@@ -104,7 +109,7 @@ export function AdvancedDrawer({ open, onClose, project, libs, mutate, setMessag
                     <Input className="h-control-sm w-40" value={binding.schemaId} placeholder="schema_id（如 luna_pinyin）" onChange={(event) => updateBinding(index, { schemaId: event.target.value })} />
                     <Select className="h-control-sm w-36" value={binding.layoutId} onChange={(event) => setBindingLayout(index, event.target.value)}>
                       {!allLayouts.some((item) => item.id === binding.layoutId) ? <option value={binding.layoutId}>{binding.layoutId} · missing</option> : null}
-                      {allLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.pageRole}</option>)}
+                      {allLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role ?? "letters"}</option>)}
                     </Select>
                     <Input className="h-control-sm w-36" value={binding.alias ?? ""} placeholder="alias（可留空）" onChange={(event) => updateBinding(index, { alias: event.target.value })} />
                     <code className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{bindingAlias(binding)}</code>

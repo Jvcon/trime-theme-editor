@@ -3,7 +3,7 @@ import { Boxes, Copy, Download, Eye, EyeOff, FolderOpen, Redo2, Save, SlidersHor
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ThemeModeToggle } from "@/components/ThemeModeToggle";
-import { compileBundle, defaultBundle } from "./compiler";
+import { blankBundle, compileBundle } from "./compiler";
 import { deleteProject, deleteSnapshot, importSnapshots, listProjects, listSnapshots, loadProject, saveProject, saveSnapshot, type Snapshot } from "./storage";
 import { AdvancedDrawer } from "./components/AdvancedDrawer";
 import { LandingScreen } from "./components/LandingScreen";
@@ -20,7 +20,7 @@ import { MacrosPanel } from "./panels/MacrosPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { ImportDialog } from "./ImportDialog";
 import type { LayoutPreset, Orientation, ProjectBundle } from "./types";
-import { libraries, normalizeBundle, portableBundle, slug } from "./utils";
+import { firstLayoutId, libraries, normalizeBundle, portableBundle, slug } from "./utils";
 
 type Board = StepId | "start" | "macros";
 
@@ -34,10 +34,10 @@ const STATE_LABEL = {
 type Props = { open?: boolean; onClose?: () => void };
 
 export function AuthoringApp({ open = true, onClose }: Props) {
-  const [project, setProject] = useState<ProjectBundle>(() => defaultBundle());
+  const [project, setProject] = useState<ProjectBundle>(() => blankBundle());
   const [projects, setProjects] = useState<ProjectBundle[]>([]);
   const [board, setBoard] = useState<Board>("theme");
-  const [activeLayoutId, setActiveLayoutId] = useState(project.mainLayoutId);
+  const [activeLayoutId, setActiveLayoutId] = useState(() => firstLayoutId(project));
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -58,6 +58,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   const libs = useMemo(() => libraries(project), [project]);
   const yaml = useMemo(() => compileBundle(project), [project]);
+  const hasLayoutEntry = project.layoutGroupIds.length > 0
+    && project.devices.every((device) => Boolean(device.layoutId ?? project.defaultLayoutId));
   const statuses = useMemo(() => stepStatuses(project, { schema: board === "export" }), [project, board]);
   const currentStatus = statuses.find((status) => status.id === board);
   const activeLayoutName = libs.layouts.find((item) => item.id === activeLayoutId)?.name;
@@ -98,7 +100,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     else resetHistory();
     projectRef.current = next;
     setProject(next);
-    setActiveLayoutId(next.mainLayoutId);
+    setActiveLayoutId(firstLayoutId(next));
     setPreviewDeviceId(next.devices[0]?.id ?? "");
     setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
   };
@@ -188,7 +190,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           const next = normalizeBundle(items[0]);
           projectRef.current = next;
           setProject(next);
-          setActiveLayoutId(next.mainLayoutId);
+          setActiveLayoutId(firstLayoutId(next));
           setPreviewDeviceId(next.devices[0]?.id ?? "");
           setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
           setMessage(`已打开：${next.meta.name}`);
@@ -208,10 +210,11 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   }, [open]);
 
   useEffect(() => {
-    if (!libs.layouts.some((item) => item.id === activeLayoutId)) {
-      setActiveLayoutId(project.mainLayoutId);
+    const exists = Boolean(activeLayoutId && project.layouts.some((item) => item.id === activeLayoutId));
+    if (!exists && project.layoutGroupIds.length > 0) {
+      setActiveLayoutId(firstLayoutId(project));
     }
-  }, [activeLayoutId, libs.layouts, project.mainLayoutId]);
+  }, [activeLayoutId, project.layouts, project.layoutGroupIds, project.defaultLayoutId]);
 
   useEffect(() => {
     if (!open) return;
@@ -236,10 +239,10 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           name: `${currentSource.name}（自定义）`,
         };
         next.layouts = next.layouts.filter((item) => item.id !== id);
-        if (next.mainLayoutId === id) next.mainLayoutId = cloneId;
-        next.pageIds = next.pageIds.map((pageId) => (pageId === id ? cloneId : pageId));
+        if (next.defaultLayoutId === id) next.defaultLayoutId = cloneId;
+        next.layoutGroupIds = next.layoutGroupIds.map((layoutId) => (layoutId === id ? cloneId : layoutId));
         next.devices = next.devices.map((device) => (
-          device.mainLayoutId === id ? { ...device, mainLayoutId: cloneId } : device
+          device.layoutId === id ? { ...device, layoutId: cloneId } : device
         ));
         next.schemaBindings = next.schemaBindings.map((binding) => (
           binding.layoutId === id ? { ...binding, layoutId: cloneId } : binding
@@ -248,6 +251,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           if (layout.landscapeId === id) layout.landscapeId = cloneId;
         }
         next.layouts.push(clone);
+        if (!next.layoutGroupIds.includes(cloneId)) next.layoutGroupIds.push(cloneId);
         fn(clone);
       } else {
         const target = next.layouts.find((item) => item.id === id);
@@ -386,7 +390,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   };
 
   const createProject = () => {
-    const next = defaultBundle();
+    const next = blankBundle();
     next.id = `project-${Date.now()}`;
     next.meta.name = `新主题 ${projects.length + 1}`;
     adoptProject(next, false);
@@ -403,7 +407,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     resetHistory();
     projectRef.current = next;
     setProject(next);
-    setActiveLayoutId(next.mainLayoutId);
+    setActiveLayoutId(firstLayoutId(next));
     setPreviewDeviceId(next.devices[0]?.id ?? "");
     setPreviewOrientation(next.devices[0]?.orientation ?? "portrait");
     setDirty(false);
@@ -417,11 +421,11 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     await deleteProject(id);
     const items = await refreshProjects();
     if (id === projectRef.current.id) {
-      const fallback = items[0] ?? defaultBundle();
+      const fallback = items[0] ?? blankBundle();
       resetHistory();
       projectRef.current = fallback;
       setProject(fallback);
-      setActiveLayoutId(fallback.mainLayoutId);
+      setActiveLayoutId(firstLayoutId(fallback));
       setPreviewDeviceId(fallback.devices[0]?.id ?? "");
       setPreviewOrientation(fallback.devices[0]?.orientation ?? "portrait");
       setDirty(!items[0]);
@@ -435,8 +439,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     try {
       const parsed = JSON.parse(await file.text()) as ProjectBundle;
       const schemaVersion = (parsed as unknown as { schemaVersion?: number }).schemaVersion;
-      if (parsed.format !== "trime-theme-bundle" || (schemaVersion !== 2 && schemaVersion !== 3) || !parsed.meta || !parsed.theme) {
-        throw new Error("不是 trime-theme-bundle v2/v3");
+      if (parsed.format !== "trime-theme-bundle" || ![2, 3, 4].includes(schemaVersion ?? 0) || !parsed.meta || !parsed.theme) {
+        throw new Error("不是 trime-theme-bundle v2/v3/v4");
       }
       const next = normalizeBundle(parsed);
       adoptProject(next, false);
@@ -500,7 +504,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         <div className="min-w-0 leading-tight">
           <div className="text-sm font-semibold">Trime Theme Editor</div>
           <div className="truncate text-2xs text-muted-foreground" title={project.meta.name}>
-            {board === "start" ? "从一个模板或现有主题开始" : project.meta.name}
+            {board === "start" ? "从空白项目或现有主题开始" : project.meta.name}
           </div>
         </div>
 
@@ -511,8 +515,8 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           <Button size="icon" variant="ghost" aria-label="撤销" title="撤销 (Ctrl/Cmd+Z)" onClick={undo}><Undo2 /></Button>
           <Button size="icon" variant="ghost" aria-label="重做" title="重做 (Shift+Ctrl/Cmd+Z)" onClick={redo}><Redo2 /></Button>
           <Button size="sm" variant="secondary" onClick={() => void save()}><Save />保存</Button>
-          <Button size="sm" variant="outline" onClick={() => void copyYaml()}><Copy />YAML</Button>
-          <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />下载</Button>
+          <Button size="sm" variant="outline" disabled={!hasLayoutEntry} title={!hasLayoutEntry ? "先添加布局，并设置默认布局或给每台设备绑定布局" : undefined} onClick={() => void copyYaml()}><Copy />YAML</Button>
+          <Button size="sm" variant="outline" disabled={!hasLayoutEntry} title={!hasLayoutEntry ? "先添加布局，并设置默认布局或给每台设备绑定布局" : undefined} onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />下载</Button>
           <Button size="sm" variant="outline" onClick={() => setProjectsOpen(true)}><FolderOpen />项目</Button>
           <Button size="sm" variant="outline" onClick={() => setAdvancedOpen(true)}><SlidersHorizontal />高级</Button>
           {board !== "layouts" ? (

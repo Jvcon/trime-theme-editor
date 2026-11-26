@@ -1,5 +1,5 @@
 import type { ProjectBundle } from "./types";
-import { libraries, normalizeBundle, pages } from "./utils";
+import { groupLayouts, normalizeBundle } from "./utils";
 
 export type DiffEntry = {
   kind: "added" | "removed" | "changed";
@@ -19,7 +19,6 @@ type Shape = Record<string, unknown>;
 
 function shape(projectInput: ProjectBundle): Shape {
   const project = normalizeBundle(projectInput);
-  const libs = libraries(project);
   const layouts = project.layouts.map((layout) => [layout.id, layout]);
   const macros = project.macros.map((macro) => [macro.id, macro]);
   const tabs = (project.chrome?.liquid.tabs ?? []).map((tab) => [tab.id, tab]);
@@ -28,9 +27,9 @@ function shape(projectInput: ProjectBundle): Shape {
     theme: project.theme,
     customThemeCards: project.customThemeCards ?? [],
     variant: project.variant,
-    mainLayoutId: project.mainLayoutId,
-    // Page order is meaningful, so keep pageIds as an array.
-    pageIds: project.pageIds,
+    defaultLayoutId: project.defaultLayoutId,
+    // Group order is an authoring preference, so keep it as an array.
+    layoutGroupIds: project.layoutGroupIds,
     devices: project.devices,
     schemaBindings: project.schemaBindings,
     keyStyles: project.keyStyles,
@@ -50,9 +49,9 @@ function shape(projectInput: ProjectBundle): Shape {
       window: project.chrome.window,
       preedit: project.chrome.preedit,
     } : {},
-    // Effective page composition, including the main layout.
+    // Effective layout group composition in UI order.
     effective: {
-      pages: pages(project, libs).map((layout) => layout.id),
+      layouts: groupLayouts(project).map((layout) => layout.id),
     },
   };
 }
@@ -81,7 +80,7 @@ const SECTIONS: Array<{ id: string; title: string; match: (path: string) => bool
   { id: "meta", title: "Meta", match: (path) => path.startsWith("meta.") },
   { id: "theme", title: "Theme cards", match: (path) => path.startsWith("theme.") || path.startsWith("customThemeCards") || path.startsWith("variant") },
   { id: "styles", title: "Key styles", match: (path) => path.startsWith("keyStyles") },
-  { id: "layouts", title: "Layouts", match: (path) => path.startsWith("mainLayoutId") || path.startsWith("pageIds") || path.startsWith("layouts.") || path.startsWith("effective.pages") },
+  { id: "layouts", title: "Layouts", match: (path) => path.startsWith("defaultLayoutId") || path.startsWith("layoutGroupIds") || path.startsWith("layouts.") || path.startsWith("effective.layouts") },
   { id: "macros", title: "Macros", match: (path) => path.startsWith("macros.") },
   { id: "devices", title: "Devices", match: (path) => path.startsWith("devices") || path.startsWith("schemaBindings") },
   { id: "interface", title: "Interface", match: (path) => path.startsWith("chrome") },

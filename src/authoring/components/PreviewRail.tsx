@@ -37,7 +37,7 @@ export function PreviewRail({
   const layout = editing ?? resolveLayoutForDevice(project, previewDevice);
   const metrics = resolveMetrics(project, previewDevice);
   const base = device
-    ? project.layouts.find((item) => item.id === (device.mainLayoutId ?? project.mainLayoutId))
+    ? project.layouts.find((item) => item.id === (device.layoutId ?? project.defaultLayoutId))
     : undefined;
   const usesVariant = !editing && orientation === "landscape" && Boolean(base?.landscapeId) && layout?.id === base?.landscapeId;
   const widthClass = wide

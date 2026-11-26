@@ -51,7 +51,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               <Badge variant="muted">{chrome?.toolbar.buttons.length ?? 0} toolbar buttons</Badge>
             </div>
             <div className="mt-2 text-2xs text-muted-foreground">
-              main: <code>{project.mainLayoutId}</code> · author: {project.meta.author || "—"}
+              default: <code>{project.defaultLayoutId ?? "—"}</code> · author: {project.meta.author || "—"}
             </div>
           </div>
 
@@ -93,7 +93,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
                 checked={options.keyboards === "main"}
                 onChange={() => setOptions((current) => ({ ...current, keyboards: "main" }))}
               />
-              只导入主键盘
+              只导入默认键盘
             </label>
             <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
@@ -104,7 +104,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               把导入布局的每一行宽度校准到 100%
             </label>
             <p className="text-2xs text-muted-foreground">
-              只导入主键盘时，页面跳转引用可能悬空，导入后可在 Layouts 里补 page。
+              只导入默认键盘时，页面跳转引用可能悬空，导入后可在布局步骤补齐布局组。
             </p>
           </section>
 

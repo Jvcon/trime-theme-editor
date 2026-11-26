@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { compileBundle, defaultBundle } from "../src/authoring/compiler";
+import { compileBundle, templateBundle } from "../src/authoring/compiler";
 import { buildManifest, EDITOR_VERSION } from "../src/authoring/manifest";
 import { BUILTIN_PRESETS } from "../src/authoring/presets";
 import type { ProjectBundle } from "../src/authoring/types";
+import { validateProject } from "../src/authoring/validation";
+import { embedLayout } from "../src/authoring/utils";
 import pkg from "../package.json";
 
 function matrixBundle(): ProjectBundle {
-  const bundle = defaultBundle();
+  const bundle = templateBundle();
   const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
   if (qwerty18) bundle.layouts.push(structuredClone(qwerty18));
   bundle.metrics = { keyHeight: 50, keyboardHeight: 260 };
   bundle.devices = [
     { id: "phone-portrait", kind: "phone", orientation: "portrait" },
     { id: "phone-landscape", kind: "phone", orientation: "landscape", metrics: { keyHeight: 40, keyboardHeight: 200 } },
-    { id: "tablet-portrait", kind: "tablet", orientation: "portrait", mainLayoutId: "qwerty18" },
+    { id: "tablet-portrait", kind: "tablet", orientation: "portrait", layoutId: "qwerty18" },
     { id: "fold-folded", kind: "fold", orientation: "portrait", foldState: "folded" },
     { id: "fold-unfolded", kind: "fold", orientation: "portrait", foldState: "unfolded" },
   ];
@@ -57,6 +59,25 @@ describe("device profiles", () => {
     const bundle = matrixBundle();
     expect(compileBundle(bundle, "tablet-portrait")).toBe(compileBundle(bundle, "tablet-portrait"));
   });
+
+  it("can export with only explicit device bindings and no project default", () => {
+    const bundle = templateBundle();
+    delete bundle.defaultLayoutId;
+    bundle.devices = [{ id: "phone", kind: "phone", orientation: "portrait", layoutId: "qwerty26" }];
+    expect(validateProject(bundle).some((issue) => issue.area === "devices" && issue.level === "error")).toBe(false);
+    const yaml = YAML.parse(compileBundle(bundle, "phone"));
+    expect(yaml.preset_keys.Keyboard_main.select).toBe("qwerty26");
+    expect(yaml.preset_keyboards.default.import_preset).toBe("qwerty26");
+  });
+
+  it("adds a catalog layout to the group when it is selected", () => {
+    const bundle = templateBundle();
+    const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
+    if (!qwerty18) throw new Error("missing qwerty18");
+    embedLayout(bundle, qwerty18);
+    expect(bundle.layoutGroupIds).toContain("qwerty18");
+    expect(bundle.layouts.some((layout) => layout.id === "qwerty18")).toBe(true);
+  });
 });
 
 describe("schema bindings", () => {
@@ -72,7 +93,7 @@ describe("schema bindings", () => {
   });
 
   it("keeps a layout that is only referenced by a schema binding", () => {
-    const bundle = defaultBundle();
+    const bundle = templateBundle();
     const qwerty18 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty18");
     if (qwerty18) bundle.layouts.push(structuredClone(qwerty18));
     bundle.schemaBindings = [{ schemaId: "cangjie5", layoutId: "qwerty18" }];

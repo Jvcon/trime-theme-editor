@@ -12,7 +12,7 @@ import { BEHAVIORS, Selector } from "../components/Selector";
 import { LAYOUT_RULES } from "../devicePresets";
 import { devicesUsingLayout, impactLabel } from "../impact";
 import type { ActionRef, KeySlot, LayoutPreset, Orientation, PresetLibraries, ProjectBundle } from "../types";
-import { actionLabel, addLandscapeVariant, cloneLayout, embedLayout, findLayout, fitLayoutRows, isPlaceholder, mainLayout, pages, pruneBundleLayouts, reflowLayoutRows, removeLandscapeVariant } from "../utils";
+import { actionLabel, addLandscapeVariant, cloneLayout, embedLayout, firstLayoutId, fitLayoutRows, groupLayouts, isPlaceholder, newLayout, pruneBundleLayouts, reflowLayoutRows, removeLandscapeVariant } from "../utils";
 
 type Props = {
   project: ProjectBundle;
@@ -52,9 +52,79 @@ export function LayoutsPanel({
   project, libs, activeLayoutId, setActiveLayoutId, mutate, editLayout, setMessage, onPreviewOrientation,
   selected, onSelectKey, popup, onPopupKey, rightTab, setRightTab, onMoveKey,
 }: Props) {
-  const layout = findLayout(project, activeLayoutId, libs) ?? mainLayout(project, libs);
+  const group = groupLayouts(project);
+  const variantIds = new Set(
+    project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  const activeLayout = project.layouts.find((item) => item.id === activeLayoutId);
+  const activeIsVariant = Boolean(activeLayout && variantIds.has(activeLayout.id));
+  const activeBase = activeIsVariant
+    ? project.layouts.find((item) => item.landscapeId === activeLayoutId)
+    : activeLayout;
+  const layout = activeLayout ?? group[0];
   const [targetBehavior, setTargetBehavior] = useState<Behavior>("click");
   const [newPopup, setNewPopup] = useState("");
+
+  const choose = (id: string) => {
+    setActiveLayoutId(id);
+    onSelectKey(undefined);
+    onPopupKey(null);
+  };
+
+  const addLayout = (id: string) => {
+    if (!id) return;
+    const next = libs.layouts.find((item) => item.id === id);
+    if (!next) return;
+    let createdId = id;
+    mutate((draft) => {
+      const embedded = embedLayout(draft, next);
+      createdId = embedded.id;
+      if (!draft.defaultLayoutId) draft.defaultLayoutId = embedded.id;
+      pruneBundleLayouts(draft);
+    });
+    choose(createdId);
+    setMessage(`已添加布局：${next.name}`);
+  };
+
+  const createBlank = () => {
+    const blank = newLayout("新布局");
+    mutate((draft) => {
+      draft.layouts.push(blank);
+      draft.layoutGroupIds.push(blank.id);
+      if (!draft.defaultLayoutId) draft.defaultLayoutId = blank.id;
+      pruneBundleLayouts(draft);
+    });
+    choose(blank.id);
+    setMessage("已新建空白布局");
+  };
+
+  useEffect(() => {
+    onPreviewOrientation?.(activeIsVariant ? "landscape" : "portrait");
+  }, [activeIsVariant, onPreviewOrientation]);
+
+  if (!layout) {
+    const available = libs.layouts.filter(
+      (item) => !project.layouts.some((existing) => existing.id === item.id) && !variantIds.has(item.id),
+    );
+    return (
+      <div className="grid h-full place-items-center overflow-auto p-panel">
+        <div className="w-full max-w-xl rounded-xl border border-border bg-card p-section text-center">
+          <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-primary/10 text-primary"><Plus className="size-5" /></div>
+          <h2 className="text-sm font-semibold">还没有布局</h2>
+          <p className="mx-auto mt-1 max-w-md text-2xs text-muted-foreground">
+            布局组是这套主题会编译出的键盘。先添加一个内置布局，或从空白布局开始；默认布局可以晚点再决定。
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <Select className="h-control w-44" value="" onChange={(event) => addLayout(event.target.value)}>
+              <option value="">添加内置布局…</option>
+              {available.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role ?? "letters"}</option>)}
+            </Select>
+            <Button size="sm" variant="outline" onClick={createBlank}><Plus />新建空白布局</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const selectedKey = selected ? layout.rows[selected.row]?.keys[selected.key] : undefined;
   const selectedPlaceholder = Boolean(selectedKey && isPlaceholder(selectedKey));
@@ -63,36 +133,17 @@ export function LayoutsPanel({
   const colorOverrideCount = !selectedPlaceholder && selectedKey
     ? KEY_COLOR_FIELDS.filter(([field]) => Boolean(selectedKey[field])).length
     : 0;
-  const main = mainLayout(project, libs);
-  const allPages = pages(project, libs);
-  const variantIds = new Set(
-    project.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
-  );
-  const availablePages = libs.layouts.filter((item) => item.id !== main.id && !variantIds.has(item.id) && !project.layouts.some((layout) => layout.id === item.id));
-  const isVariantActive = variantIds.has(activeLayoutId);
-  const activeBase = isVariantActive
-    ? project.layouts.find((item) => item.landscapeId === activeLayoutId) ?? layout
-    : layout;
-  const landscapeVariant = activeBase?.landscapeId ? findLayout(project, activeBase.landscapeId, libs) : undefined;
-  const baseLayoutOptions = libs.layouts.filter((item) => !variantIds.has(item.id) && item.pageRole === "main");
-  const referencedElsewhere = new Set<string>([
-    ...project.devices.map((device) => device.mainLayoutId).filter((value): value is string => Boolean(value)),
-    ...project.schemaBindings.map((binding) => binding.layoutId),
-  ]);
-  const detached = project.layouts.filter((item) => (
-    item.id !== main.id && !project.pageIds.includes(item.id) && !variantIds.has(item.id) && !referencedElsewhere.has(item.id)
-  ));
+  const groupIds = new Set(group.map((item) => item.id));
+  const inheritingDevices = project.devices.filter((device) => !device.layoutId).length;
+  const isDefault = project.defaultLayoutId === layout.id;
+  const baseForChip = activeBase ?? layout;
+  const landscapeVariant = baseForChip.landscapeId
+    ? project.layouts.find((item) => item.id === baseForChip.landscapeId)
+    : undefined;
   const usage = devicesUsingLayout(project, layout.id);
-
-  useEffect(() => {
-    onPreviewOrientation?.(isVariantActive ? "landscape" : "portrait");
-  }, [isVariantActive, onPreviewOrientation]);
-
-  const choose = (id: string) => {
-    setActiveLayoutId(id);
-    onSelectKey(undefined);
-    onPopupKey(null);
-  };
+  const availableLayouts = libs.layouts.filter(
+    (item) => !project.layouts.some((existing) => existing.id === item.id) && !variantIds.has(item.id),
+  );
 
   const updateKey = (fn: (key: KeySlot) => void) => {
     if (!selected) return;
@@ -235,78 +286,31 @@ export function LayoutsPanel({
     });
   };
 
-  const selectMainLayout = (id: string) => {
-    const next = libs.layouts.find((item) => item.id === id);
-    if (!next) return;
-    const previousMain = project.layouts.find((item) => item.id === project.mainLayoutId);
-    mutate((draft) => {
-      embedLayout(draft, next);
-      draft.mainLayoutId = next.id;
-      draft.pageIds = draft.pageIds.filter((pageId) => pageId !== next.id);
-      pruneBundleLayouts(draft);
-    });
-    choose(id);
-    setMessage(previousMain && !previousMain.builtin
-      ? `已切换主布局；「${previousMain.name}」已保留，可在主布局下拉或「保留的布局」中切回`
-      : `已切换主布局为 ${next.name}`);
+  const setAsDefault = (id: string) => {
+    if (!groupIds.has(id)) return;
+    mutate((draft) => { draft.defaultLayoutId = id; });
+    setMessage("已设为默认布局");
   };
 
-  const setDetachedAsMain = (id: string) => {
-    const target = project.layouts.find((item) => item.id === id);
-    if (!target) return;
-    mutate((draft) => {
-      draft.mainLayoutId = id;
-      draft.pageIds = draft.pageIds.filter((pageId) => pageId !== id);
-      pruneBundleLayouts(draft);
-    });
-    choose(id);
-    setMessage(`已把「${target.name}」设为主布局`);
-  };
-
-  const deleteDetached = (id: string) => {
-    const target = project.layouts.find((item) => item.id === id);
-    if (!target) return;
-    if (!window.confirm(`删除保留的布局「${target.name}」？`)) return;
-    mutate((draft) => {
-      draft.layouts = draft.layouts.filter((item) => item.id !== id && item.id !== target.landscapeId);
-      for (const item of draft.layouts) {
-        if (item.landscapeId === id) delete item.landscapeId;
-      }
-      pruneBundleLayouts(draft);
-    });
-    if (activeLayoutId === id) choose(project.mainLayoutId);
-    setMessage("已删除保留的布局");
+  const clearDefault = () => {
+    mutate((draft) => { delete draft.defaultLayoutId; });
+    setMessage("已取消默认布局；请确保每台设备都单独绑定了布局");
   };
 
   const duplicateLayout = () => {
-    const source = layout;
-    const clone = cloneLayout(source, `${source.name} 副本`);
+    const clone = cloneLayout(layout, `${layout.name} 副本`);
     mutate((draft) => {
       draft.layouts.push(clone);
-      if (draft.mainLayoutId === source.id) draft.mainLayoutId = clone.id;
-      else draft.pageIds = draft.pageIds.map((id) => (id === source.id ? clone.id : id));
+      draft.layoutGroupIds.push(clone.id);
+      if (!draft.defaultLayoutId) draft.defaultLayoutId = clone.id;
       pruneBundleLayouts(draft);
     });
     choose(clone.id);
     setMessage(`已复制布局：${clone.name}`);
   };
 
-  const createLayout = () => {
-    const clone = cloneLayout(layout, "新布局") as LayoutPreset;
-    clone.id = `custom-layout-${Date.now()}`;
-    clone.pageRole = "number";
-    clone.rows = [{ height: 52, keys: [{ style: "default", width: 100, click: { kind: "char", value: "a" }, label: "A" }] }];
-    mutate((draft) => {
-      draft.layouts.push(clone);
-      draft.pageIds = [...draft.pageIds, clone.id];
-      pruneBundleLayouts(draft);
-    });
-    choose(clone.id);
-    setMessage("已新增空白页");
-  };
-
   const createLandscapeVariant = () => {
-    const base = activeBase ?? layout;
+    const base = baseForChip;
     let createdId = "";
     mutate((draft) => {
       createdId = addLandscapeVariant(draft, base) ?? "";
@@ -316,7 +320,7 @@ export function LayoutsPanel({
   };
 
   const simplifyLandscapeVariant = () => {
-    if (!isVariantActive) return;
+    if (!activeIsVariant) return;
     editLayout(layout.id, (draft) => {
       if (draft.rows.length > LAYOUT_RULES.simplifyAboveRows) draft.rows.splice(-1, 1);
       fitLayoutRows(draft);
@@ -325,70 +329,48 @@ export function LayoutsPanel({
   };
 
   const deleteLandscapeVariant = () => {
-    if (!isVariantActive) return;
+    if (!activeIsVariant) return;
     let ownerId = "";
     mutate((draft) => {
       ownerId = removeLandscapeVariant(draft, layout.id) ?? "";
     });
-    if (ownerId) choose(ownerId);
+    choose(ownerId || firstLayoutId(project));
     setMessage("已删除横屏变体；横屏设备会回退到竖屏结构");
   };
 
   const deleteLayout = () => {
-    if (isVariantActive) {
+    if (activeIsVariant) {
       deleteLandscapeVariant();
       return;
     }
-    if (layout.builtin) return setMessage("内置布局只读；请复制后再编辑");
     const variantId = layout.landscapeId;
-    const affected = project.devices.filter((device) => device.mainLayoutId === layout.id).length;
-    const confirmed = window.confirm(
-      `删除「${layout.name}」${variantId ? "及其横屏变体" : ""}？${affected ? `\n${affected} 个设备将回退到项目主布局。` : ""}`,
-    );
-    if (!confirmed) return;
-    const fallback = libs.layouts.find((item) => item.id === "qwerty26") ?? libs.layouts.find((item) => item.pageRole === "main");
+    const affected = project.devices.filter((device) => device.layoutId === layout.id).length;
+    const schemaCount = project.schemaBindings.filter((binding) => binding.layoutId === layout.id).length;
+    const pageCount = pageActionCount(project, layout.id);
+    const details = [
+      variantId ? "及其横屏变体" : "",
+      project.defaultLayoutId === layout.id ? "默认布局标记会被清除" : "",
+      project.defaultLayoutId === layout.id && inheritingDevices > 0 ? `${inheritingDevices} 台继承设备将失去默认布局` : "",
+      affected ? `${affected} 台设备的绑定会被清除` : "",
+      schemaCount ? `${schemaCount} 个 schema 绑定会被删除` : "",
+      pageCount ? `${pageCount} 个 Page 跳转会被清除` : "",
+    ].filter(Boolean).join("；");
+    if (!window.confirm(`删除「${layout.name}」${details ? `？${details}。` : "？"}`)) return;
+    const remaining = group.filter((item) => item.id !== layout.id);
     mutate((draft) => {
       draft.layouts = draft.layouts.filter((item) => item.id !== layout.id && item.id !== variantId);
-      draft.pageIds = draft.pageIds.filter((id) => id !== layout.id && id !== variantId);
-      for (const item of draft.layouts) {
-        if (item.landscapeId === layout.id || item.landscapeId === variantId) delete item.landscapeId;
-      }
+      draft.layoutGroupIds = draft.layoutGroupIds.filter((id) => id !== layout.id);
+      if (draft.defaultLayoutId === layout.id) delete draft.defaultLayoutId;
       for (const device of draft.devices) {
-        if (device.mainLayoutId === layout.id) delete device.mainLayoutId;
+        if (device.layoutId === layout.id) delete device.layoutId;
       }
-      if (draft.mainLayoutId === layout.id && fallback) {
-        embedLayout(draft, fallback);
-        draft.mainLayoutId = fallback.id;
-      }
+      draft.schemaBindings = draft.schemaBindings.filter((binding) => binding.layoutId !== layout.id);
+      clearPageActions(draft, layout.id);
+      if (variantId) clearPageActions(draft, variantId);
       pruneBundleLayouts(draft);
     });
-    choose(project.mainLayoutId === layout.id ? fallback?.id ?? project.mainLayoutId : project.mainLayoutId);
+    choose(remaining[0]?.id ?? "");
     setMessage("已删除布局");
-  };
-
-  const addPage = (id: string) => {
-    if (!id) return;
-    const next = libs.layouts.find((item) => item.id === id);
-    if (!next) return;
-    mutate((draft) => {
-      embedLayout(draft, next);
-      draft.pageIds = [...draft.pageIds.filter((item) => item !== id), id];
-      pruneBundleLayouts(draft);
-    });
-    choose(id);
-  };
-
-  const removePage = (id: string) => {
-    const variantId = project.layouts.find((item) => item.id === id)?.landscapeId;
-    mutate((draft) => {
-      draft.pageIds = draft.pageIds.filter((item) => item !== id);
-      draft.layouts = draft.layouts.filter((item) => item.id !== id && item.id !== variantId);
-      for (const item of draft.layouts) {
-        if (item.landscapeId === id) delete item.landscapeId;
-      }
-      pruneBundleLayouts(draft);
-    });
-    if (activeLayoutId === id) choose(project.mainLayoutId);
   };
 
   const positionActions = selected ? (
@@ -405,101 +387,89 @@ export function LayoutsPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-stack border-b border-border px-panel py-2">
-        <span className="text-2xs uppercase tracking-wider text-muted-foreground">主布局</span>
-        <Select className="h-control-sm w-40" value={main.id} onChange={(event) => selectMainLayout(event.target.value)}>
-          {baseLayoutOptions.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
-        </Select>
-        <span className="ml-2 text-2xs uppercase tracking-wider text-muted-foreground">正在编辑</span>
-        {layout.pageRole === "main" ? (
-          <>
-            <div className="flex items-center gap-0.5 rounded-md border border-border bg-muted/20 p-0.5">
-              <button
-                type="button"
-                aria-pressed={!isVariantActive}
-                className={`rounded-sm px-2 py-0.5 text-2xs transition-colors ${!isVariantActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
-                onClick={() => choose(activeBase?.id ?? layout.id)}
-              >竖屏</button>
-              <button
-                type="button"
-                aria-pressed={isVariantActive}
-                className={`rounded-sm px-2 py-0.5 text-2xs transition-colors ${isVariantActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
-                onClick={() => (landscapeVariant ? choose(landscapeVariant.id) : createLandscapeVariant())}
-              >{landscapeVariant ? "横屏" : "横屏 · 未创建"}</button>
-            </div>
-            {isVariantActive ? (
-              <>
-                <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={simplifyLandscapeVariant}>精简派生</Button>
-                <Button size="sm" variant="ghost" className="h-control-sm text-2xs text-destructive" onClick={deleteLandscapeVariant}>删除变体</Button>
-              </>
-            ) : null}
-          </>
-        ) : (
-          <span className="text-2xs text-muted-foreground">页面不区分横竖屏</span>
-        )}
-        <span className="ml-2 text-2xs uppercase tracking-wider text-muted-foreground">Pages</span>
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">布局组</span>
         <div className="flex flex-wrap items-center gap-1">
-          {allPages.map((page, index) => (
-            <span key={page.id} className={`inline-flex items-center rounded border text-2xs ${activeLayoutId === page.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
-              <button type="button" className="px-1.5 py-0.5" onClick={() => choose(page.id)} title={page.id}>{index === 0 ? `主 · ${page.name}` : page.name}</button>
-              {index > 0 ? <button type="button" className="border-l border-border px-1 text-destructive" onClick={() => removePage(page.id)}>×</button> : null}
-            </span>
-          ))}
-          {availablePages.length > 0 ? (
-            <Select className="h-control-xs w-28 text-2xs" value="" onChange={(event) => addPage(event.target.value)}>
-              <option value="">+ Page</option>
-              {availablePages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </Select>
-          ) : null}
-          <Button size="sm" variant="ghost" className="h-control-xs px-1 text-2xs" onClick={createLayout}><Plus className="size-3" />Blank</Button>
+          {group.map((item) => {
+            const active = baseForChip.id === item.id;
+            const itemIsDefault = project.defaultLayoutId === item.id;
+            return (
+              <span key={item.id} className={`inline-flex items-center rounded border text-2xs ${active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                <button type="button" className="px-1.5 py-0.5" onClick={() => choose(item.id)} title={item.id}>
+                  {itemIsDefault ? "★ " : ""}{item.name}
+                </button>
+                <span className="border-l border-border px-1 text-4xs">{item.role ?? "letters"}</span>
+              </span>
+            );
+          })}
         </div>
+        {availableLayouts.length > 0 ? (
+          <Select className="h-control-xs w-32 text-2xs" value="" onChange={(event) => addLayout(event.target.value)}>
+            <option value="">+ 添加布局</option>
+            {availableLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role ?? "letters"}</option>)}
+          </Select>
+        ) : null}
+        <Button size="sm" variant="ghost" className="h-control-xs px-1 text-2xs" onClick={createBlank}><Plus className="size-3" />Blank</Button>
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-muted/20 p-0.5">
+          <button
+            type="button"
+            aria-pressed={!activeIsVariant}
+            className={`rounded-sm px-2 py-0.5 text-2xs transition-colors ${!activeIsVariant ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
+            onClick={() => choose(baseForChip.id)}
+          >竖屏</button>
+          <button
+            type="button"
+            aria-pressed={activeIsVariant}
+            className={`rounded-sm px-2 py-0.5 text-2xs transition-colors ${activeIsVariant ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
+            onClick={() => (landscapeVariant ? choose(landscapeVariant.id) : createLandscapeVariant())}
+          >{landscapeVariant ? "横屏" : "横屏 · 未创建"}</button>
+        </div>
+        {activeIsVariant ? (
+          <>
+            <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={simplifyLandscapeVariant}>精简派生</Button>
+            <Button size="sm" variant="ghost" className="h-control-sm text-2xs text-destructive" onClick={deleteLandscapeVariant}>删除变体</Button>
+          </>
+        ) : null}
         <div className="ml-auto flex items-center gap-1">
-          <Badge variant={isVariantActive ? "success" : "muted"}>
-            {layout.pageRole !== "main" ? "页面" : isVariantActive ? "横屏变体" : landscapeVariant ? "含横屏变体" : "仅竖屏"}
+          <Badge variant={activeIsVariant || isDefault ? "success" : "muted"}>
+            {activeIsVariant ? "横屏变体" : isDefault ? "默认布局" : "布局"}
           </Badge>
           <Badge variant="muted">{keyCount} keys</Badge>
           {gapCount > 0 ? <Badge variant="muted">{gapCount} gaps</Badge> : null}
           <Badge variant="muted">{layout.rows.length} rows</Badge>
           {layout.builtin ? <Badge variant="muted">builtin</Badge> : <Badge variant="success">custom</Badge>}
+          {!activeIsVariant ? (
+            isDefault
+              ? <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={clearDefault}>取消默认</Button>
+              : <Button size="sm" variant="outline" className="h-control-sm" onClick={() => setAsDefault(baseForChip.id)}>设为默认</Button>
+          ) : null}
           <Button size="sm" variant="outline" className="h-control-sm" onClick={duplicateLayout}><Copy />Duplicate</Button>
-          <Button size="sm" variant="outline" className="h-control-sm text-destructive" disabled={layout.builtin} onClick={deleteLayout}><Trash2 />Delete</Button>
+          <Button size="sm" variant="outline" className="h-control-sm text-destructive" onClick={deleteLayout}><Trash2 />Delete</Button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-stack border-b border-border bg-muted/20 px-panel py-1 text-2xs text-muted-foreground">
-        {layout.pageRole === "main" ? (
+        {activeIsVariant ? (
           <>
-            <span className={usage.length ? "text-warning" : ""}>{impactLabel(usage)}</span>
-            {isVariantActive
-              ? <span>· 编辑横屏变体不会影响竖屏</span>
-              : landscapeVariant
-                ? <span>· 竖屏改动不会自动同步横屏变体</span>
-                : <span>· 不创建横屏变体时，横屏设备沿用竖屏结构</span>}
+            <span>横屏变体：仅横屏设备使用</span>
+            <span>· 编辑不会影响竖屏结构</span>
           </>
         ) : (
-          <span>页面：由运行时切换，不直接绑定设备</span>
+          <>
+            <span className={usage.length ? "text-warning" : ""}>{impactLabel(usage)}</span>
+            <span>· {isDefault ? "默认布局：未单独绑定布局的设备使用它" : usage.length ? "页面：也被部分设备直接绑定" : "页面：由运行时切换，不直接绑定设备"}</span>
+            {landscapeVariant ? <span>· 竖屏改动不会自动同步横屏变体</span> : <span>· 未创建横屏变体时，横屏设备沿用此结构</span>}
+          </>
         )}
       </div>
 
-      {detached.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/10 px-panel py-1 text-2xs">
-          <span className="text-muted-foreground" title="切换主布局不会删除你修改过的布局">保留的布局</span>
-          {detached.map((item) => (
-            <span key={item.id} className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5">
-              <button
-                type="button"
-                className={activeLayoutId === item.id ? "text-primary" : ""}
-                title="继续编辑"
-                onClick={() => choose(item.id)}
-              >{item.name}</button>
-              <span className="text-4xs text-muted-foreground">{item.pageRole}</span>
-              <button
-                type="button"
-                className="text-3xs text-muted-foreground hover:text-foreground"
-                onClick={() => setDetachedAsMain(item.id)}
-              >设为主布局</button>
-              <button type="button" className="text-destructive" onClick={() => deleteDetached(item.id)}>×</button>
-            </span>
-          ))}
+      {!project.defaultLayoutId ? (
+        <div className={`flex flex-wrap items-center gap-2 border-b px-panel py-1 text-2xs ${inheritingDevices > 0 ? "border-warning/20 bg-warning/5 text-warning" : "border-border bg-muted/20 text-muted-foreground"}`}>
+          <span>
+            {inheritingDevices > 0
+              ? `未设置默认布局：${inheritingDevices} 台未单独绑定布局的设备将无法编译。`
+              : "未设置默认布局；所有设备都已单独绑定，可以正常编译。"}
+          </span>
+          <button type="button" className="underline underline-offset-2" onClick={() => setAsDefault(baseForChip.id)}>把「{baseForChip.name}」设为默认</button>
         </div>
       ) : null}
 
@@ -520,7 +490,7 @@ export function LayoutsPanel({
               libs={libs}
               layout={layout}
               metrics={project.metrics ?? {}}
-              orientation={isVariantActive ? "landscape" : "portrait"}
+              orientation={activeIsVariant ? "landscape" : "portrait"}
               fit="full"
               interactive
               selected={selected}
@@ -572,7 +542,7 @@ export function LayoutsPanel({
               占位符只占宽度，不能绑定行为。添加普通键后再配置 click / long_click 等。
             </div>
           ) : (
-            <Selector libs={libs} targetBehavior={targetBehavior} setTargetBehavior={(value) => setTargetBehavior(value as Behavior)} onAssign={(action) => {
+            <Selector libs={libs} pageTargets={group} targetBehavior={targetBehavior} setTargetBehavior={(value) => setTargetBehavior(value as Behavior)} onAssign={(action) => {
               if (!selected) return setMessage("先在右侧键盘编辑里选择一个键");
               setBehavior(targetBehavior, action);
             }} />
@@ -582,7 +552,7 @@ export function LayoutsPanel({
         <section className="min-h-0 rounded-xl border border-border bg-card p-gutter">
           <Tabs value={rightTab} onValueChange={setRightTab}>
             <TabsList>
-              <TabsTrigger value="page">页面</TabsTrigger>
+              <TabsTrigger value="page">布局</TabsTrigger>
               <TabsTrigger value="key">键</TabsTrigger>
               <TabsTrigger value="behavior">行为</TabsTrigger>
               <TabsTrigger value="style">样式</TabsTrigger>
@@ -591,17 +561,19 @@ export function LayoutsPanel({
             <div className="mt-2 max-h-[calc(100vh-13rem)] overflow-auto pr-1">
               <TabsContent value="page" className="mt-0 space-y-2">
                 <Field label="Layout name"><Input value={layout.name} onChange={(event) => editLayout(layout.id, (draft) => { draft.name = event.target.value; })} /></Field>
-                <Field label="Page role">
-                  <Select value={layout.pageRole} onChange={(event) => editLayout(layout.id, (draft) => { draft.pageRole = event.target.value as LayoutPreset["pageRole"]; })}>
-                    <option value="main">main</option>
+                <Field label="Role">
+                  <Select value={layout.role ?? "letters"} onChange={(event) => editLayout(layout.id, (draft) => { draft.role = event.target.value as LayoutPreset["role"]; })}>
+                    <option value="letters">letters</option>
                     <option value="number">number</option>
                     <option value="symbols">symbols</option>
                   </Select>
                 </Field>
-                <p className="text-2xs text-muted-foreground">页面由主布局 + Pages 组合；编译时每个页面成为一个 preset_keyboard。</p>
+                <p className="text-2xs text-muted-foreground">
+                  布局组由默认布局 + 其他布局组成；编译时每个布局成为一个 preset_keyboard。Role 只是分类提示，不决定默认布局。
+                </p>
                 <div className="rounded border border-border bg-muted/20 p-2 text-2xs text-muted-foreground">
                   <div>id: <code>{layout.id}</code></div>
-                  <div>rows: {layout.rows.length} · keys: {keyCount} · gaps: {gapCount}</div>
+                  <div>default: {isDefault ? "yes" : "no"} · rows: {layout.rows.length} · keys: {keyCount} · gaps: {gapCount}</div>
                 </div>
               </TabsContent>
 
@@ -751,6 +723,36 @@ export function LayoutsPanel({
       </div>
     </div>
   );
+}
+
+function pageActionCount(project: ProjectBundle, layoutId: string): number {
+  let count = 0;
+  for (const layout of project.layouts) {
+    for (const row of layout.rows) {
+      for (const key of row.keys) {
+        for (const [behavior] of BEHAVIORS) {
+          const action = (key as unknown as Record<string, ActionRef | undefined>)[behavior];
+          if (action?.kind === "page" && action.id === layoutId) count += 1;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+function clearPageActions(draft: ProjectBundle, layoutId: string): void {
+  for (const layout of draft.layouts) {
+    for (const row of layout.rows) {
+      for (const key of row.keys) {
+        for (const [behavior] of BEHAVIORS) {
+          const action = (key as unknown as Record<string, ActionRef | undefined>)[behavior];
+          if (action?.kind === "page" && action.id === layoutId) {
+            delete (key as unknown as Record<string, unknown>)[behavior];
+          }
+        }
+      }
+    }
+  }
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

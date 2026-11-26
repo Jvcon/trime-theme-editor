@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultBundle } from "../src/authoring/compiler";
+import { blankBundle, templateBundle } from "../src/authoring/compiler";
 import { stepStatuses } from "../src/authoring/flow";
 import { devicesUsingLayout, impactLabel } from "../src/authoring/impact";
 import type { ProjectBundle } from "../src/authoring/types";
@@ -7,14 +7,14 @@ import { validateProject } from "../src/authoring/validation";
 
 describe("step statuses", () => {
   it("keeps the default bundle ready and explainable", () => {
-    expect(validateProject(defaultBundle())).toEqual([]);
-    const statuses = stepStatuses(defaultBundle());
+    expect(validateProject(templateBundle())).toEqual([]);
+    const statuses = stepStatuses(templateBundle());
     expect(statuses.find((status) => status.id === "layouts")?.state).toBe("done");
     expect(statuses.find((status) => status.id === "export")?.state).toBe("done");
   });
 
   it("covers every step with an explainable reason", () => {
-    const statuses = stepStatuses(defaultBundle());
+    const statuses = stepStatuses(templateBundle());
     expect(statuses.map((status) => status.id)).toEqual(["theme", "layouts", "interface", "devices", "export"]);
     for (const status of statuses) expect(status.reasons.length).toBeGreaterThan(0);
     expect(statuses.find((status) => status.id === "theme")?.state).toBe("done");
@@ -23,7 +23,7 @@ describe("step statuses", () => {
   });
 
   it("summarises both selected schemes and reports missing tokens", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     const theme = stepStatuses(project).find((status) => status.id === "theme");
     expect(theme?.summary).toBe("浅色 Alucard · 深色 Dracula");
     expect(theme?.reasons.join(" ")).not.toContain("内置");
@@ -34,16 +34,26 @@ describe("step statuses", () => {
     expect(broken?.reasons.join(" ")).toContain("border");
   });
 
-  it("marks a missing main layout as an error", () => {
-    const project = defaultBundle();
-    project.mainLayoutId = "missing-layout";
+  it("marks a missing default layout as an error", () => {
+    const project = templateBundle();
+    project.defaultLayoutId = "missing-layout";
     const layouts = stepStatuses(project).find((status) => status.id === "layouts");
     expect(layouts?.state).toBe("error");
-    expect(layouts?.reasons.join(" ")).toContain("主布局不存在");
+    expect(layouts?.reasons.join(" ")).toContain("默认布局不存在");
+  });
+
+  it("explains the blank-project state without inventing a layout", () => {
+    const project = blankBundle();
+    const statuses = stepStatuses(project);
+    expect(statuses.find((status) => status.id === "layouts")?.state).toBe("warning");
+    expect(statuses.find((status) => status.id === "layouts")?.reasons.join(" ")).toContain("还没有布局");
+    expect(statuses.find((status) => status.id === "devices")?.state).toBe("error");
+    expect(statuses.find((status) => status.id === "export")?.state).toBe("error");
+    expect(validateProject(project).some((issue) => issue.message.includes("未关联布局"))).toBe(true);
   });
 
   it("warns when a landscape device has no variant", () => {
-    const project = defaultBundle();
+    const project = templateBundle();
     project.devices = [{ id: "phone-landscape", kind: "phone", orientation: "landscape" }];
     const devices = stepStatuses(project).find((status) => status.id === "devices");
     expect(devices?.state).toBe("warning");
@@ -53,7 +63,7 @@ describe("step statuses", () => {
 
 describe("impact hints", () => {
   function withVariant(): ProjectBundle {
-    const project = defaultBundle();
+    const project = templateBundle();
     const base = project.layouts.find((layout) => layout.id === "qwerty26");
     if (!base) throw new Error("missing qwerty26");
     const variant = structuredClone(base);

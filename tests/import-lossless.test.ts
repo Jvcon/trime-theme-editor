@@ -139,7 +139,7 @@ preset_keyboards:
     };
     const result = importTrimeYaml(source, "trime.yaml", {}, resources);
     const yaml = YAML.parse(compileBundle(result.project));
-    expect(result.project.mainLayoutId).toBe("default");
+    expect(result.project.defaultLayoutId).toBe("default");
     expect(yaml.preset_keyboards.qwerty26).toBeUndefined();
     expect(yaml.preset_keyboards.default.keys[0].click).toBe("a");
   });

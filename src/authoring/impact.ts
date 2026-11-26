@@ -11,7 +11,7 @@ export function devicesUsingLayout(project: ProjectBundle, layoutId: string): De
   const isVariant = Boolean(owner);
   const baseId = owner?.id ?? layoutId;
   return project.devices.filter((device) => {
-    const bound = device.mainLayoutId ?? project.mainLayoutId;
+    const bound = device.layoutId ?? project.defaultLayoutId;
     if (bound !== baseId) return false;
     return isVariant ? device.orientation === "landscape" : true;
   });

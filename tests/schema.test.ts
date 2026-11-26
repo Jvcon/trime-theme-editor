@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileBundle, defaultBundle } from "../src/authoring/compiler";
+import { compileBundle, templateBundle } from "../src/authoring/compiler";
 import { TRIME_SCHEMA_VERSION, validateTrimeObject, validateTrimeYaml } from "../src/authoring/schema";
 
 describe("Trime schema validation", () => {
@@ -8,7 +8,7 @@ describe("Trime schema validation", () => {
   });
 
   it("accepts the default compiled output", () => {
-    expect(validateTrimeYaml(compileBundle(defaultBundle()))).toEqual([]);
+    expect(validateTrimeYaml(compileBundle(templateBundle()))).toEqual([]);
   });
 
   it("rejects an invalid field type", () => {
