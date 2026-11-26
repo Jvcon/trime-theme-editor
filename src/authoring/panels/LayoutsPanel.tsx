@@ -76,14 +76,19 @@ export function LayoutsPanel({
     const next = libs.layouts.find((item) => item.id === id);
     if (!next) return;
     let createdId = id;
+    let extraPages = 0;
     mutate((draft) => {
+      const before = new Set(draft.layoutGroupIds);
       const embedded = embedLayout(draft, next);
       createdId = embedded.id;
+      extraPages = Math.max(0, draft.layoutGroupIds.filter((layoutId) => !before.has(layoutId)).length - 1);
       if (!draft.defaultLayoutId) draft.defaultLayoutId = embedded.id;
       pruneBundleLayouts(draft);
     });
     choose(createdId);
-    setMessage(`已添加布局：${next.name}`);
+    setMessage(extraPages > 0
+      ? `已添加布局：${next.name}，并补齐 ${extraPages} 个被预设跳转引用的页面`
+      : `已添加布局：${next.name}`);
   };
 
   const createBlank = () => {
@@ -436,7 +441,9 @@ export function LayoutsPanel({
           <Badge variant="muted">{keyCount} keys</Badge>
           {gapCount > 0 ? <Badge variant="muted">{gapCount} gaps</Badge> : null}
           <Badge variant="muted">{layout.rows.length} rows</Badge>
-          {layout.builtin ? <Badge variant="muted">builtin</Badge> : <Badge variant="success">custom</Badge>}
+          {layout.sourcePresetId
+            ? <Badge variant="muted">preset: {layout.sourcePresetId}</Badge>
+            : layout.builtin ? <Badge variant="muted">builtin</Badge> : <Badge variant="success">custom</Badge>}
           {!activeIsVariant ? (
             isDefault
               ? <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={clearDefault}>取消默认</Button>
@@ -698,7 +705,7 @@ export function LayoutsPanel({
                           <span>{label}</span>
                           <span className="whitespace-normal break-words text-right text-muted-foreground" title={actionLabel(targetOf(selectedKey, behavior), libs)}>{actionLabel(targetOf(selectedKey, behavior), libs)}</span>
                         </button>
-                        <ActionField action={targetOf(selectedKey, behavior)} libs={libs} onChange={(action) => setBehavior(behavior, action)} />
+                        <ActionField action={targetOf(selectedKey, behavior)} libs={libs} pageTargets={group} onChange={(action) => setBehavior(behavior, action)} />
                       </div>
                     ))}
                   </>

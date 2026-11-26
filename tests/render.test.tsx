@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AuthoringApp } from "../src/authoring/AuthoringApp";
 import { ImportDialog } from "../src/authoring/ImportDialog";
 import { blankBundle, templateBundle } from "../src/authoring/compiler";
+import { ActionField } from "../src/authoring/components/ActionField";
 import { AdvancedDrawer } from "../src/authoring/components/AdvancedDrawer";
 import { PreviewRail } from "../src/authoring/components/PreviewRail";
 import { ProjectDrawer } from "../src/authoring/components/ProjectDrawer";
@@ -10,7 +11,7 @@ import { DevicesPanel } from "../src/authoring/panels/DevicesPanel";
 import { ExportPanel } from "../src/authoring/panels/ExportPanel";
 import { LayoutsPanel } from "../src/authoring/panels/LayoutsPanel";
 import { ThemesPanel } from "../src/authoring/panels/ThemesPanel";
-import { isPlaceholder, libraries } from "../src/authoring/utils";
+import { groupLayouts, isPlaceholder, libraries } from "../src/authoring/utils";
 
 const noop = vi.fn();
 
@@ -95,6 +96,21 @@ describe("AuthoringApp", () => {
     expect(html).toContain("Add placeholder");
     expect(html).toContain("只占宽度，不渲染按键");
     expect(html).not.toContain("Label symbol");
+  });
+
+  it("offers only project pages as Page action targets", () => {
+    const project = templateBundle();
+    const html = renderToStaticMarkup(
+      <ActionField
+        action={{ kind: "page", id: "number" }}
+        libs={libraries(project)}
+        pageTargets={groupLayouts(project)}
+        onChange={noop}
+      />,
+    );
+    expect(html).toContain("默认布局（按设备解析）");
+    expect(html).toContain("数字");
+    expect(html).not.toContain("18 键");
   });
 
   it("renders the empty layout group state without inventing a layout", () => {

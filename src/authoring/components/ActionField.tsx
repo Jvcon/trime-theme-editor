@@ -1,21 +1,23 @@
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { KEYCODES, COMMANDS, TOGGLES } from "../catalogs";
-import type { ActionRef, PresetLibraries } from "../types";
+import type { ActionRef, LayoutPreset, PresetLibraries } from "../types";
 
 type Props = {
   action: ActionRef | undefined;
   libs: PresetLibraries;
+  /** Project pages reachable from a Page action. Catalog presets are not targets. */
+  pageTargets: LayoutPreset[];
   onChange: (action: ActionRef | undefined) => void;
 };
 
-export function ActionField({ action, libs, onChange }: Props) {
+export function ActionField({ action, libs, pageTargets, onChange }: Props) {
   const kind = action?.kind ?? "none";
 
   const setKind = (next: string) => {
     if (next === "none") return onChange(undefined);
     if (next === "macro") return onChange({ kind: "macro", id: libs.macros[0]?.id ?? "" });
-    if (next === "page") return onChange({ kind: "page", id: libs.layouts[0]?.id ?? "" });
+    if (next === "page") return onChange({ kind: "page", id: "main" });
     if (next === "toggle") return onChange({ kind: "toggle", value: TOGGLES[0].value });
     if (next === "command") return onChange({ kind: "command", value: COMMANDS[0].value, option: COMMANDS[0].option });
     if (next === "preset") return onChange({ kind: "preset", value: "" });
@@ -55,7 +57,11 @@ export function ActionField({ action, libs, onChange }: Props) {
 
       {action?.kind === "page" ? (
         <Select className="h-control-sm" value={action.id} onChange={(event) => onChange({ kind: "page", id: event.target.value })}>
-          {libs.layouts.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
+          <option value="main">默认布局（按设备解析）</option>
+          {pageTargets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}
+          {action.id !== "main" && !pageTargets.some((item) => item.id === action.id) ? (
+            <option value={action.id}>{action.id} · 未加入布局组</option>
+          ) : null}
         </Select>
       ) : null}
 

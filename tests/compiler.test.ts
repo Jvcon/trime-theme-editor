@@ -87,6 +87,26 @@ describe("compileBundle", () => {
     expect(normalizeBundle(authored).layoutGroupIds).toContain("authored");
   });
 
+  it("remaps legacy page actions to the page cloned from that preset", () => {
+    const bundle = templateBundle();
+    const number = bundle.layouts.find((layout) => layout.id === "number");
+    if (!number) throw new Error("missing number layout");
+    const clone = { ...structuredClone(number), id: "custom-number-1700000000000", builtin: false };
+    bundle.layouts = bundle.layouts.filter((layout) => layout.id !== "number");
+    bundle.layouts.push(clone);
+    bundle.layoutGroupIds = bundle.layoutGroupIds.map((id) => (id === "number" ? clone.id : id));
+
+    const main = bundle.layouts.find((layout) => layout.id === "qwerty26");
+    const key = main?.rows[0]?.keys[0];
+    if (!key) throw new Error("missing qwerty26 key");
+    key.click = { kind: "page", id: "number" };
+
+    const normalized = normalizeBundle(bundle);
+    expect(normalized.layouts.find((layout) => layout.id === clone.id)?.sourcePresetId).toBe("number");
+    expect(normalized.layouts.find((layout) => layout.id === "qwerty26")?.rows[0].keys[0].click)
+      .toEqual({ kind: "page", id: clone.id });
+  });
+
   it("keeps compiled output stable when migrating a v3 document", () => {
     const v4 = templateBundle();
     const v3 = structuredClone(v4) as unknown as Record<string, unknown>;

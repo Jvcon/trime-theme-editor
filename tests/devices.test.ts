@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
-import { compileBundle, templateBundle } from "../src/authoring/compiler";
+import { blankBundle, compileBundle, templateBundle } from "../src/authoring/compiler";
 import { buildManifest, EDITOR_VERSION } from "../src/authoring/manifest";
 import { BUILTIN_PRESETS } from "../src/authoring/presets";
 import type { ProjectBundle } from "../src/authoring/types";
@@ -77,6 +77,22 @@ describe("device profiles", () => {
     embedLayout(bundle, qwerty18);
     expect(bundle.layoutGroupIds).toContain("qwerty18");
     expect(bundle.layouts.some((layout) => layout.id === "qwerty18")).toBe(true);
+  });
+
+  it("materializes presets as pages and links their preset navigation", () => {
+    const bundle = blankBundle();
+    const qwerty26 = BUILTIN_PRESETS.layouts.find((layout) => layout.id === "qwerty26");
+    if (!qwerty26) throw new Error("missing qwerty26");
+    embedLayout(bundle, qwerty26);
+    expect(bundle.layoutGroupIds).toEqual(expect.arrayContaining(["qwerty26", "number", "symbols"]));
+    const page = bundle.layouts.find((layout) => layout.id === "qwerty26");
+    expect(page?.builtin).toBe(false);
+    expect(page?.sourcePresetId).toBe("qwerty26");
+    for (const id of ["number", "symbols"]) {
+      const dependency = bundle.layouts.find((layout) => layout.id === id);
+      expect(dependency?.builtin).toBe(false);
+      expect(dependency?.sourcePresetId).toBe(id);
+    }
   });
 });
 

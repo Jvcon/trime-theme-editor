@@ -147,19 +147,146 @@ function normalizeLiquid(input: Partial<LiquidConfig> | undefined, base: LiquidC
   };
 }
 
-/** Adds a catalog layout to the bundle and its ordered layout group. */
-export function embedLayout(bundle: ProjectBundle, layout: LayoutPreset): LayoutPreset {
+const KEY_BEHAVIORS = [
+  "click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right",
+] as const;
+
+type PageAction = Extract<ActionRef, { kind: "page" }>;
+
+function eachPageAction(bundle: ProjectBundle, callback: (action: PageAction) => void): void {
+  for (const layout of bundle.layouts) {
+    for (const row of layout.rows) {
+      for (const key of row.keys) {
+        for (const behavior of KEY_BEHAVIORS) {
+          const action = (key as unknown as Record<string, ActionRef | undefined>)[behavior];
+          if (action?.kind === "page") callback(action as PageAction);
+        }
+      }
+    }
+  }
+}
+
+/** Copies a catalog preset into the project as a stable, user-owned page. */
+function materializeLayout(bundle: ProjectBundle, layout: LayoutPreset): LayoutPreset {
   if (!Array.isArray(bundle.layoutGroupIds)) bundle.layoutGroupIds = [];
   const existing = bundle.layouts.find((item) => item.id === layout.id);
-  const target = existing ?? (() => {
-    const copy = structuredClone(layout);
-    bundle.layouts.push(copy);
-    return copy;
-  })();
+  if (existing) {
+    if (existing.builtin) {
+      existing.sourcePresetId = existing.sourcePresetId ?? existing.id;
+      existing.builtin = false;
+    }
+    return existing;
+  }
+  const copy = structuredClone(layout);
+  if (copy.builtin) {
+    copy.sourcePresetId = copy.sourcePresetId ?? copy.id;
+    copy.builtin = false;
+  }
+  bundle.layouts.push(copy);
+  return copy;
+}
+
+/**
+ * A preset's Page actions point at page ids. When a preset fills a page, make
+ * those actions resolve to the project's pages: remap to an existing page with
+ * the same provenance, or instantiate the referenced built-in page.
+ */
+function ensurePageDependencies(
+  bundle: ProjectBundle,
+  roots: LayoutPreset[],
+  addMissing: boolean,
+): LayoutPreset[] {
+  if (!Array.isArray(bundle.layoutGroupIds)) bundle.layoutGroupIds = [];
+  const variantIds = new Set(
+    bundle.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  const queue = [...roots];
+  const scanned = new Set<string>();
+  const added: LayoutPreset[] = [];
+  while (queue.length > 0) {
+    const page = queue.shift();
+    if (!page || scanned.has(page.id)) continue;
+    scanned.add(page.id);
+    for (const row of page.rows) {
+      for (const key of row.keys) {
+        for (const behavior of KEY_BEHAVIORS) {
+          const action = (key as unknown as Record<string, ActionRef | undefined>)[behavior];
+          if (!action || action.kind !== "page" || !action.id || action.id === "main") continue;
+          const owner = bundle.layouts.find((item) => item.landscapeId === action.id);
+          if (owner) {
+            action.id = owner.id;
+            if (!scanned.has(owner.id)) queue.push(owner);
+            continue;
+          }
+          const existing = bundle.layouts.find((item) => item.id === action.id);
+          if (existing) {
+            if (!variantIds.has(existing.id) && !bundle.layoutGroupIds.includes(existing.id)) {
+              bundle.layoutGroupIds.push(existing.id);
+            }
+            if (!scanned.has(existing.id)) queue.push(existing);
+            continue;
+          }
+          const sourceMatches = bundle.layouts.filter(
+            (item) => item.sourcePresetId === action.id && !variantIds.has(item.id),
+          );
+          const groupMatches = sourceMatches.filter((item) => bundle.layoutGroupIds.includes(item.id));
+          const sourcePage = groupMatches.length === 1 ? groupMatches[0] : sourceMatches.length === 1 ? sourceMatches[0] : undefined;
+          if (sourcePage) {
+            action.id = sourcePage.id;
+            if (!bundle.layoutGroupIds.includes(sourcePage.id)) bundle.layoutGroupIds.push(sourcePage.id);
+            if (!scanned.has(sourcePage.id)) queue.push(sourcePage);
+            continue;
+          }
+          if (!addMissing) continue;
+          const preset = BUILTIN_PRESETS.layouts.find((item) => item.id === action.id && item.builtin);
+          if (!preset) continue;
+          const materialized = materializeLayout(bundle, preset);
+          const materializedIsVariant = bundle.layouts.some((item) => item.landscapeId === materialized.id);
+          if (!materializedIsVariant && !bundle.layoutGroupIds.includes(materialized.id)) {
+            bundle.layoutGroupIds.push(materialized.id);
+          }
+          added.push(materialized);
+          queue.push(materialized);
+        }
+      }
+    }
+  }
+  return added;
+}
+
+/** Rewrites dangling Page actions to a page that was cloned from that preset. */
+function remapLegacyPageTargets(bundle: ProjectBundle, validIds: Set<string>): void {
+  const variantIds = new Set(
+    bundle.layouts.map((item) => item.landscapeId).filter((value): value is string => Boolean(value)),
+  );
+  eachPageAction(bundle, (action) => {
+    if (action.id === "main" || validIds.has(action.id)) return;
+    const owner = bundle.layouts.find((item) => item.landscapeId === action.id);
+    if (owner) {
+      action.id = owner.id;
+      return;
+    }
+    const matches = bundle.layouts.filter(
+      (item) => item.sourcePresetId === action.id && !variantIds.has(item.id),
+    );
+    const groupMatches = matches.filter((item) => validIds.has(item.id));
+    if (groupMatches.length === 1) action.id = groupMatches[0].id;
+    else if (matches.length === 1) action.id = matches[0].id;
+  });
+}
+
+/**
+ * Adds a catalog layout to the bundle and its ordered layout group. Built-ins
+ * are copied into project-owned pages, and Page actions in the preset are
+ * linked to the pages they reference.
+ */
+export function embedLayout(bundle: ProjectBundle, layout: LayoutPreset): LayoutPreset {
+  const target = materializeLayout(bundle, layout);
   const isVariant = bundle.layouts.some((item) => item.landscapeId === target.id);
   if (!isVariant && !bundle.layoutGroupIds.includes(target.id)) {
     bundle.layoutGroupIds.push(target.id);
   }
+  ensurePageDependencies(bundle, [target], true);
   return target;
 }
 
@@ -424,6 +551,16 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
     }
     layout.role = normalizeLayoutRole(layout as LayoutPreset & { pageRole?: unknown });
     delete (layout as LayoutPreset & { pageRole?: unknown }).pageRole;
+    if (layout.builtin) {
+      layout.sourcePresetId = layout.sourcePresetId ?? layout.id;
+      layout.builtin = false;
+    } else if (!layout.sourcePresetId) {
+      // Old bundles cloned an edited built-in to `custom-<preset>-<timestamp>`.
+      const legacyClone = /^custom-(.+)-(\d{10,})$/.exec(layout.id);
+      if (legacyClone && BUILTIN_PRESETS.layouts.some((item) => item.id === legacyClone[1] && item.builtin)) {
+        layout.sourcePresetId = legacyClone[1];
+      }
+    }
   }
   // Landscape variants are an additive, optional field. Drop dangling or
   // self-referencing ids so the bundle stays self-contained.
@@ -463,6 +600,7 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
   else delete bundle.defaultLayoutId;
   delete (bundle as ProjectBundle & { mainLayoutId?: string }).mainLayoutId;
   delete (bundle as ProjectBundle & { pageIds?: string[] }).pageIds;
+  remapLegacyPageTargets(bundle, new Set(bundle.layoutGroupIds));
 
   bundle.devices = normalizeDevices(bundle.devices);
   for (const device of bundle.devices) {
@@ -594,6 +732,8 @@ export function addLandscapeVariant(bundle: ProjectBundle, base: LayoutPreset): 
     version: 1,
   };
   delete clone.landscapeId;
+  // A variant is not a page target; keep provenance on the base only.
+  delete clone.sourcePresetId;
   bundle.layouts.push(clone);
   source.landscapeId = id;
   pruneBundleLayouts(bundle);

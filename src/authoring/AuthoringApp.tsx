@@ -20,7 +20,7 @@ import { MacrosPanel } from "./panels/MacrosPanel";
 import { ThemesPanel } from "./panels/ThemesPanel";
 import { ImportDialog } from "./ImportDialog";
 import type { LayoutPreset, Orientation, ProjectBundle } from "./types";
-import { firstLayoutId, libraries, normalizeBundle, portableBundle, slug } from "./utils";
+import { embedLayout, firstLayoutId, libraries, normalizeBundle, portableBundle, slug } from "./utils";
 
 type Board = StepId | "start" | "macros";
 
@@ -223,42 +223,22 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   }, [open, project.id]);
 
   const editLayout = (id: string, fn: (layout: LayoutPreset) => void) => {
-    const current = projectRef.current;
-    const source = libraries(current).layouts.find((item) => item.id === id);
-    if (!source) return;
-    const embedded = current.layouts.some((item) => item.id === id);
-    const cloneId = !embedded || source.builtin ? `custom-${id}-${Date.now()}` : undefined;
     commit((next) => {
-      const currentSource = libraries(next).layouts.find((item) => item.id === id);
-      if (!currentSource) return;
-      if (cloneId) {
-        const clone: LayoutPreset = {
-          ...structuredClone(currentSource),
-          id: cloneId,
-          builtin: false,
-          name: `${currentSource.name}（自定义）`,
-        };
-        next.layouts = next.layouts.filter((item) => item.id !== id);
-        if (next.defaultLayoutId === id) next.defaultLayoutId = cloneId;
-        next.layoutGroupIds = next.layoutGroupIds.map((layoutId) => (layoutId === id ? cloneId : layoutId));
-        next.devices = next.devices.map((device) => (
-          device.layoutId === id ? { ...device, layoutId: cloneId } : device
-        ));
-        next.schemaBindings = next.schemaBindings.map((binding) => (
-          binding.layoutId === id ? { ...binding, layoutId: cloneId } : binding
-        ));
-        for (const layout of next.layouts) {
-          if (layout.landscapeId === id) layout.landscapeId = cloneId;
+      const embedded = next.layouts.find((item) => item.id === id);
+      if (embedded) {
+        if (embedded.builtin) {
+          embedded.sourcePresetId = embedded.sourcePresetId ?? embedded.id;
+          embedded.builtin = false;
         }
-        next.layouts.push(clone);
-        if (!next.layoutGroupIds.includes(cloneId)) next.layoutGroupIds.push(cloneId);
-        fn(clone);
-      } else {
-        const target = next.layouts.find((item) => item.id === id);
-        if (target) fn(target);
+        fn(embedded);
+        return;
       }
+      // A catalog preset is only editable after it becomes a project page.
+      const source = libraries(next).layouts.find((item) => item.id === id);
+      if (!source) return;
+      const target = embedLayout(next, source);
+      fn(target);
     });
-    if (cloneId) setActiveLayoutId(cloneId);
   };
 
   useEffect(() => {

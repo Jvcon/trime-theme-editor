@@ -109,6 +109,11 @@ export type LayoutPreset = {
   builtin: boolean;
   /** Content hint used by pickers and labels. Main/default is a project pointer, not a role. */
   role?: LayoutRole;
+  /**
+   * Catalog preset this page was created from. Provenance only: `id` is the
+   * stable page identity used by device bindings and Page actions.
+   */
+  sourcePresetId?: string;
   asciiMode?: number;
   rows: LayoutRow[];
   /**
