@@ -64,4 +64,15 @@
     scrollbar-width: thin;
     scrollbar-color: #303643 transparent;
   }
+
+  .theme-split-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  @media (min-width: 1280px) {
+    .theme-split-grid {
+      grid-template-columns: minmax(240px, var(--theme-split, 30%)) 8px minmax(0, 1fr);
+      align-items: start;
+    }
+  }
 }

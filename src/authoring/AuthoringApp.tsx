@@ -609,6 +609,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
             }}
             orientation={previewOrientation}
             onOrientation={setPreviewOrientation}
+            onVariant={(variant) => commit((draft) => { draft.variant = variant; })}
             onCollapse={() => setPreviewOpen(false)}
             layoutId={board === "layouts" ? activeLayoutId : undefined}
             interactive={board === "layouts"}

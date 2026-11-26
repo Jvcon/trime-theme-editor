@@ -1,10 +1,11 @@
 import { ChevronRight } from "lucide-react";
-import type { Orientation, PresetLibraries, ProjectBundle } from "../types";
+import type { Orientation, PresetLibraries, ProjectBundle, Variant } from "../types";
 import { deviceLabel, resolveLayoutForDevice, resolveMetrics } from "../resolve";
 import { KeyboardPreview, type DropPosition, type KeyPosition } from "./KeyboardPreview";
 
 export function PreviewRail({
   project, libs, deviceId, onDeviceId, orientation, onOrientation, onCollapse,
+  onVariant,
   layoutId, interactive = false, wide = false,
   selected, onSelect, popup, onPopup, onMoveKey, onMessage, onClosePopup,
 }: {
@@ -15,6 +16,7 @@ export function PreviewRail({
   orientation: Orientation;
   onOrientation: (value: Orientation) => void;
   onCollapse: () => void;
+  onVariant: (value: Variant) => void;
   /** When editing a specific layout, preview that layout instead of the device's binding. */
   layoutId?: string;
   /** Turn the rail into the layout editing canvas. */
@@ -38,7 +40,9 @@ export function PreviewRail({
     ? project.layouts.find((item) => item.id === (device.mainLayoutId ?? project.mainLayoutId))
     : undefined;
   const usesVariant = !editing && orientation === "landscape" && Boolean(base?.landscapeId) && layout?.id === base?.landscapeId;
-  const widthClass = wide ? "w-[420px] xl:w-[480px]" : "w-[320px]";
+  const widthClass = wide
+    ? "w-[30%] min-w-[420px] max-w-[720px]"
+    : "w-[30%] min-w-[320px] max-w-[640px]";
 
   return (
     <aside className={`hidden ${widthClass} shrink-0 flex-col border-l border-border bg-card/20 lg:flex`}>
@@ -60,6 +64,18 @@ export function PreviewRail({
             <option key={item.id} value={item.id}>{deviceLabel(item)}</option>
           ))}
         </select>
+        <div className="flex shrink-0 items-center rounded border border-border p-0.5" title="预览方案">
+          <button
+            type="button"
+            className={`rounded px-1.5 py-0.5 text-[10px] ${project.variant === "light" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            onClick={() => onVariant("light")}
+          >浅色</button>
+          <button
+            type="button"
+            className={`rounded px-1.5 py-0.5 text-[10px] ${project.variant === "dark" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            onClick={() => onVariant("dark")}
+          >深色</button>
+        </div>
         {interactive ? (
           <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {orientation === "landscape" ? "横屏" : "竖屏"}

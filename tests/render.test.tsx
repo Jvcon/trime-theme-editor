@@ -4,6 +4,7 @@ import { AuthoringApp } from "../src/authoring/AuthoringApp";
 import { ImportDialog } from "../src/authoring/ImportDialog";
 import { defaultBundle } from "../src/authoring/compiler";
 import { AdvancedDrawer } from "../src/authoring/components/AdvancedDrawer";
+import { PreviewRail } from "../src/authoring/components/PreviewRail";
 import { ProjectDrawer } from "../src/authoring/components/ProjectDrawer";
 import { DevicesPanel } from "../src/authoring/panels/DevicesPanel";
 import { ExportPanel } from "../src/authoring/panels/ExportPanel";
@@ -40,6 +41,28 @@ describe("AuthoringApp", () => {
     expect(html).toContain("Dracula");
     expect(html).not.toContain("内置");
     expect(html).toContain("修改任意颜色时会自动复制为自定义方案");
+    expect(html).toContain("浅色 · Alucard");
+    expect(html).toContain("深色 · Dracula");
+    expect(html).toContain("切换后同步右侧预览");
+  });
+
+  it("offers a light/dark switch inside the preview rail", () => {
+    const project = defaultBundle();
+    const html = renderToStaticMarkup(
+      <PreviewRail
+        project={project}
+        libs={libraries(project)}
+        deviceId={project.devices[0]?.id ?? "phone"}
+        onDeviceId={noop}
+        orientation="portrait"
+        onOrientation={noop}
+        onVariant={noop}
+        onCollapse={noop}
+      />,
+    );
+    expect(html).toContain("预览");
+    expect(html).toContain("浅色");
+    expect(html).toContain("深色");
   });
 
   it("labels user-edited schemes as custom without showing a built-in badge", () => {

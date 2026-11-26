@@ -61,6 +61,10 @@
 - 内置 Dracula / Alucard、Catppuccin Latte / Frappé / Macchiato / Mocha、
   Solarized Light / Dark、Material Light / Dark、Nord Light / Dark
 - 浅色方案与深色方案分别选择，互不影响；色卡本身是一套单方案
+- 色值 / 状态覆盖 / 键样式 / 尺寸区域用 tab 切换浅色/深色，并联动右侧预览
+- 色值栏与其余设置的宽度可拖动分隔条调整，双击恢复 30%
+- 常驻预览约占 30% 宽度
+- 预览栏自带浅色/深色切换，其他步骤也能随时切换预览方向
 - 修改内置色卡时自动复制为自定义方案；自定义方案显示“自定义”
 - 自定义色卡保存在项目内，随 bundle 导出，切换选择不会丢失
 - token 与 hover / pressed / disabled 状态覆盖

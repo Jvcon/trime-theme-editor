@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { Copy, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PresetLibraries, ProjectBundle, ThemeCardPreset, Variant } from "../types";
 import { cloneThemeCard, defaultThemeSelection, newThemeCard, tokenValue } from "../utils";
 
@@ -71,6 +73,8 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
   const [stateField, setStateField] = useState<(typeof STATE_FIELDS)[number]>("pressed");
   const [overrideToken, setOverrideToken] = useState("surface");
   const [overrideValue, setOverrideValue] = useState("#ffffff");
+  const [split, setSplit] = useState(30);
+  const splitGridRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(() => groupedCards(libs.themeCards), [libs.themeCards]);
 
@@ -100,7 +104,6 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
         }
       }
       draft.theme[variant] = next;
-      draft.variant = variant;
     });
   };
 
@@ -192,6 +195,29 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
     });
   };
 
+  const startSplitDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const container = splitGridRef.current;
+    if (!container) return;
+    event.preventDefault();
+    const rect = container.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) => {
+      const percent = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+      setSplit(Math.min(48, Math.max(24, percent)));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
   return (
     <div className="h-full overflow-auto p-5">
       <details className="mb-3 rounded-xl border border-border bg-card p-3" open>
@@ -234,11 +260,9 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">预览</span>
-          <Button size="sm" variant={project.variant === "light" ? "default" : "ghost"} onClick={() => mutate((draft) => { draft.variant = "light"; })}>浅色</Button>
-          <Button size="sm" variant={project.variant === "dark" ? "default" : "ghost"} onClick={() => mutate((draft) => { draft.variant = "dark"; })}>深色</Button>
+          <span className="text-[10px] text-muted-foreground">编辑</span>
           {card.builtin ? (
-            <span className="ml-2 text-xs font-semibold">{card.name}</span>
+            <span className="text-xs font-semibold">{card.name}</span>
           ) : (
             <>
               <Badge variant="success">自定义</Badge>
@@ -259,21 +283,60 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h3 className="mb-2 text-xs font-semibold">色值 · {project.variant === "light" ? "浅色" : "深色"} · {card.name}</h3>
-          <div className="space-y-1">
-            {Object.entries(card.tokens).map(([token, value]) => (
-              <div key={token} className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-[10px] text-muted-foreground">{token}</span>
-                <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
-                <Input className="h-7" value={value} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
-              </div>
-            ))}
-          </div>
-        </section>
+      <Tabs
+        value={project.variant}
+        onValueChange={(value) => {
+          if (value === "light" || value === "dark") mutate((draft) => { draft.variant = value; });
+        }}
+      >
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <TabsList>
+            <TabsTrigger value="light" className="max-w-[220px] truncate" title={project.theme.light.name}>浅色 · {project.theme.light.name}</TabsTrigger>
+            <TabsTrigger value="dark" className="max-w-[220px] truncate" title={project.theme.dark.name}>深色 · {project.theme.dark.name}</TabsTrigger>
+          </TabsList>
+          <span className="text-[9px] text-muted-foreground">切换后同步右侧预览</span>
+        </div>
 
-        <div className="space-y-4">
+        <TabsContent value={project.variant}>
+          <div
+            ref={splitGridRef}
+            className="theme-split-grid grid gap-4"
+            style={{ "--theme-split": `${split}%` } as CSSProperties}
+          >
+            <section className="rounded-xl border border-border bg-card p-4">
+              <h3 className="mb-2 text-xs font-semibold">色值 · {project.variant === "light" ? "浅色" : "深色"} · {card.name}</h3>
+              <div className="space-y-1">
+                {Object.entries(card.tokens).map(([token, value]) => (
+                  <div key={token} className="flex items-center gap-2">
+                    <span className="w-24 shrink-0 text-[10px] text-muted-foreground">{token}</span>
+                    <input type="color" className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
+                    <Input className="h-7" value={value} onChange={(event) => editCard((target) => { target.tokens[token] = event.target.value; })} />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整色值栏宽度"
+              aria-valuemin={24}
+              aria-valuemax={48}
+              aria-valuenow={Math.round(split)}
+              title="拖动调整色值栏宽度，双击恢复 30%"
+              onPointerDown={startSplitDrag}
+              onDoubleClick={() => setSplit(30)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") setSplit((value) => Math.max(24, value - 2));
+                if (event.key === "ArrowRight") setSplit((value) => Math.min(48, value + 2));
+              }}
+              tabIndex={0}
+              className="hidden cursor-col-resize touch-none select-none items-center justify-center rounded border border-border bg-muted/40 transition-colors hover:bg-accent xl:flex"
+            >
+              <span className="h-8 w-1 rounded-full bg-muted-foreground/40" />
+            </div>
+
+        <div className="min-w-0 space-y-4">
           <section className="rounded-xl border border-border bg-card p-4">
             <h3 className="mb-2 text-xs font-semibold">状态覆盖</h3>
             <div className="mb-2 flex gap-1">
@@ -394,7 +457,9 @@ export function ThemesPanel({ project, libs, mutate, setMessage }: Props) {
             <p className="mt-2 text-[9px] text-muted-foreground">popup 尺寸/颜色会写入 style 与 color scheme；popup 文本颜色来自主题色卡。</p>
           </section>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
