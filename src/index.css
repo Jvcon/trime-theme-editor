@@ -1,29 +1,197 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: #0e1014;
-  --color-foreground: #e8eaed;
-  --color-card: #12151b;
-  --color-card-foreground: #e8eaed;
-  --color-popover: #161a21;
-  --color-popover-foreground: #e8eaed;
-  --color-primary: #4d7cff;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #1a1e26;
-  --color-secondary-foreground: #cbd5e1;
-  --color-muted: #171b23;
-  --color-muted-foreground: #9aa0a6;
-  --color-accent: #1f2633;
-  --color-accent-foreground: #dce7ff;
-  --color-destructive: #e05252;
-  --color-border: #262a33;
-  --color-input: #303643;
-  --color-ring: #4d7cff;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic tokens live here, in two layers:
+ * 1. :root / .dark hold the resolved values for each supported mode.
+ * 2. @theme inline exposes them as Tailwind utilities (bg-card, text-muted-foreground…).
+ *
+ * Components should use the utilities, never the resolved values directly.
+ */
+:root {
+  color-scheme: light;
+
+  --background: #f6f8fa;
+  --foreground: #121820;
+  --card: #ffffff;
+  --card-foreground: #121820;
+  --popover: #ffffff;
+  --popover-foreground: #121820;
+
+  --primary: #0d6b63;
+  --primary-foreground: #ffffff;
+  --primary-hover: #115e59;
+  --primary-active: #134e4a;
+
+  --secondary: #e8edf3;
+  --secondary-foreground: #1c2733;
+  --secondary-hover: #dce4ee;
+
+  --muted: #eef2f6;
+  --muted-foreground: #556274;
+  --surface-hover: #e9eef4;
+  --surface-active: #dfe7f0;
+
+  --accent: #dcf2ef;
+  --accent-foreground: #0b4f4a;
+  --accent-hover: #cbeae6;
+
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --destructive-hover: #8f1c13;
+  --success: #126b42;
+  --success-foreground: #ffffff;
+  --warning: #8f5205;
+  --warning-foreground: #ffffff;
+  --info: #1d4ed8;
+  --info-foreground: #ffffff;
+
+  --border: #d7dee7;
+  --input: #8090a2;
+  --ring: #0d6b63;
+  --overlay: rgb(8 13 20 / 0.55);
+
+  --shadow-tint: rgb(15 23 42 / 0.14);
+  --selection: rgb(13 107 99 / 0.22);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #0b1118;
+  --foreground: #e6edf6;
+  --card: #111a24;
+  --card-foreground: #e6edf6;
+  --popover: #15202c;
+  --popover-foreground: #e6edf6;
+
+  --primary: #2dd4bf;
+  --primary-foreground: #052e2b;
+  --primary-hover: #5eead4;
+  --primary-active: #99f6e4;
+
+  --secondary: #1a2735;
+  --secondary-foreground: #c9d6e5;
+  --secondary-hover: #223345;
+
+  --muted: #141f2b;
+  --muted-foreground: #9fb0c3;
+  --surface-hover: #1a2735;
+  --surface-active: #223345;
+
+  --accent: #123431;
+  --accent-foreground: #99f6e4;
+  --accent-hover: #17423e;
+
+  --destructive: #f87171;
+  --destructive-foreground: #2b0a0a;
+  --destructive-hover: #fca5a5;
+  --success: #4ade80;
+  --success-foreground: #052315;
+  --warning: #fbbf24;
+  --warning-foreground: #2b1a00;
+  --info: #93c5fd;
+  --info-foreground: #0b1e3a;
+
+  --border: #2b3b4f;
+  --input: #546b86;
+  --ring: #5eead4;
+  --overlay: rgb(2 6 12 / 0.72);
+
+  --shadow-tint: rgb(0 0 0 / 0.5);
+  --selection: rgb(45 212 191 / 0.26);
+}
+
+@theme inline {
+  /* Color */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary-hover: var(--secondary-hover);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+
+  /* Typography */
+  --font-sans: "IBM Plex Sans", Inter, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", ui-monospace, monospace;
+
+  --text-4xs: 0.5rem;
+  --text-4xs--line-height: 0.75rem;
+  --text-3xs: 0.5625rem;
+  --text-3xs--line-height: 0.875rem;
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.9375rem;
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.25rem;
+
+  /* Spacing */
+  --spacing-control-xs: 1.5rem;
+  --spacing-control-sm: 1.75rem;
+  --spacing-control: 2rem;
+  --spacing-control-lg: 2.25rem;
+  --spacing-control-xl: 2.5rem;
+  --spacing-gutter: 0.75rem;
+  --spacing-panel: 1rem;
+  --spacing-section: 1.25rem;
+  --spacing-page: 1.5rem;
+  --spacing-stack: 0.5rem;
+
+  /* Radii */
+  --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-  --font-sans: Inter, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --radius-2xl: 1.25rem;
+  --radius-control: 0.5rem;
+  --radius-panel: 0.875rem;
+  --radius-pill: 9999px;
+
+  /* Elevation */
+  --shadow-control: 0 1px 2px var(--shadow-tint);
+  --shadow-raised: 0 2px 6px -4px var(--shadow-tint), 0 10px 30px -18px var(--shadow-tint);
+  --shadow-overlay: 0 8px 24px -12px var(--shadow-tint), 0 30px 80px -32px var(--shadow-tint);
+  --shadow-preview: 0 18px 48px -24px var(--shadow-tint);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @layer base {
@@ -37,12 +205,18 @@
     height: 100%;
   }
 
+  html {
+    background: var(--color-background);
+  }
+
   body {
     margin: 0;
     overflow: hidden;
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   button,
@@ -50,19 +224,51 @@
     cursor: pointer;
   }
 
-  button:disabled {
+  button:disabled,
+  [aria-disabled="true"] {
     cursor: not-allowed;
   }
 
+  /* Every operable control keeps a visible, high-contrast focus indicator. */
+  :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted-foreground);
+    opacity: 1;
+  }
+
   ::selection {
-    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
+    background: var(--selection);
+    color: var(--color-foreground);
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: #303643 transparent;
+    scrollbar-color: var(--color-input) transparent;
   }
 
   .theme-split-grid {

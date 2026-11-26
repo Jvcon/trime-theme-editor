@@ -46,57 +46,62 @@ export function PreviewRail({
 
   return (
     <aside className={`hidden ${widthClass} shrink-0 flex-col border-l border-border bg-card/20 lg:flex`}>
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex items-center gap-stack border-b border-border px-3 py-2">
         <span className="text-xs font-semibold">{interactive ? "键盘编辑" : "预览"}</span>
-        <span className="text-[9px] text-muted-foreground">{interactive ? "点击选键 · 拖拽移动 · 长按 popup" : "跟随当前步骤"}</span>
-        <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" title="收起预览" onClick={onCollapse}>
+        <span className="text-3xs text-muted-foreground">{interactive ? "点击选键 · 拖拽移动 · 长按 popup" : "跟随当前步骤"}</span>
+        <button type="button" className="ml-auto text-muted-foreground transition-colors hover:text-foreground" aria-label="收起预览" title="收起预览" onClick={onCollapse}>
           {interactive ? null : <ChevronRight className="size-4" />}
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2">
         <select
-          className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-[10px]"
+          className="h-control-sm min-w-0 flex-1 rounded-control border border-input bg-card px-1 text-2xs text-foreground shadow-control focus-visible:ring-2 focus-visible:ring-ring"
           value={device?.id ?? ""}
           onChange={(event) => onDeviceId(event.target.value)}
+          aria-label="预览设备"
         >
           {project.devices.map((item) => (
             <option key={item.id} value={item.id}>{deviceLabel(item)}</option>
           ))}
         </select>
-        <div className="flex shrink-0 items-center rounded border border-border p-0.5" title="预览方案">
+        <div className="flex shrink-0 items-center rounded-control border border-border p-0.5" title="预览方案">
           <button
             type="button"
-            className={`rounded px-1.5 py-0.5 text-[10px] ${project.variant === "light" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            aria-pressed={project.variant === "light"}
+            className={`rounded-sm px-1.5 py-0.5 text-2xs transition-colors ${project.variant === "light" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
             onClick={() => onVariant("light")}
           >浅色</button>
           <button
             type="button"
-            className={`rounded px-1.5 py-0.5 text-[10px] ${project.variant === "dark" ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+            aria-pressed={project.variant === "dark"}
+            className={`rounded-sm px-1.5 py-0.5 text-2xs transition-colors ${project.variant === "dark" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
             onClick={() => onVariant("dark")}
           >深色</button>
         </div>
         {interactive ? (
-          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded-control border border-border px-1.5 py-0.5 text-2xs text-muted-foreground">
             {orientation === "landscape" ? "横屏" : "竖屏"}
           </span>
         ) : (
           <>
             <button
               type="button"
-              className={`rounded border px-1.5 py-0.5 text-[10px] ${orientation === "portrait" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+              aria-pressed={orientation === "portrait"}
+              className={`rounded-control border px-1.5 py-0.5 text-2xs transition-colors ${orientation === "portrait" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active"}`}
               onClick={() => onOrientation("portrait")}
             >竖屏</button>
             <button
               type="button"
-              className={`rounded border px-1.5 py-0.5 text-[10px] ${orientation === "landscape" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+              aria-pressed={orientation === "landscape"}
+              className={`rounded-control border px-1.5 py-0.5 text-2xs transition-colors ${orientation === "landscape" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active"}`}
               onClick={() => onOrientation("landscape")}
             >横屏</button>
           </>
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-auto p-gutter">
         {layout ? (
           <KeyboardPreview
             project={project}
@@ -120,7 +125,7 @@ export function PreviewRail({
         )}
       </div>
 
-      <div className="space-y-0.5 border-t border-border px-3 py-2 text-[9px] text-muted-foreground">
+      <div className="space-y-0.5 border-t border-border px-3 py-2 text-3xs text-muted-foreground">
         <div>
           布局：<span className="text-foreground">{layout?.name ?? "—"}</span>
           {editing ? " · 正在编辑" : usesVariant ? " · 横屏变体" : ""}

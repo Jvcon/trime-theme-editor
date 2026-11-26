@@ -79,54 +79,54 @@ export function AdvancedDrawer({ open, onClose, project, libs, mutate, setMessag
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-border bg-background">
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+      <div className="absolute inset-0 bg-overlay" aria-hidden="true" onClick={onClose} />
+      <aside role="dialog" aria-modal="true" aria-label="高级设置" className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-border bg-background">
+        <div className="flex items-center gap-stack border-b border-border px-panel py-3">
           <span className="text-sm font-semibold">高级</span>
           <Badge variant="muted">编译器术语只在这里出现</Badge>
-          <Button size="icon" variant="ghost" className="ml-auto" onClick={onClose}><X /></Button>
+          <Button size="icon" variant="ghost" className="ml-auto" aria-label="关闭高级设置" onClick={onClose}><X /></Button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
-          <section className="rounded-xl border border-border bg-card p-3">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div className="min-h-0 flex-1 space-y-4 overflow-auto p-panel">
+          <section className="rounded-xl border border-border bg-card p-gutter">
+            <div className="mb-2 flex flex-wrap items-center gap-stack">
               <h3 className="text-xs font-semibold">输入法绑定</h3>
               <Badge variant="muted">{project.schemaBindings.length}</Badge>
-              <span className="text-[9px] text-muted-foreground">schema_id → keyset，输出 alias keyboard</span>
-              <Button size="sm" variant="outline" className="ml-auto h-8" onClick={addBinding}><Plus />添加</Button>
+              <span className="text-3xs text-muted-foreground">schema_id → keyset，输出 alias keyboard</span>
+              <Button size="sm" variant="outline" className="ml-auto h-control" onClick={addBinding}><Plus />添加</Button>
             </div>
             {project.schemaBindings.length === 0 ? (
-              <p className="py-2 text-[10px] text-muted-foreground">还没有绑定。添加后会生成 <code>schema_luna_pinyin: import_preset: qwerty26</code> 这样的别名。</p>
+              <p className="py-2 text-2xs text-muted-foreground">还没有绑定。添加后会生成 <code>schema_luna_pinyin: import_preset: qwerty26</code> 这样的别名。</p>
             ) : (
               <div className="space-y-2">
                 {project.schemaBindings.map((binding, index) => (
-                  <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/10 p-2">
-                    <Input className="h-7 w-40" value={binding.schemaId} placeholder="schema_id（如 luna_pinyin）" onChange={(event) => updateBinding(index, { schemaId: event.target.value })} />
-                    <Select className="h-7 w-36" value={binding.layoutId} onChange={(event) => setBindingLayout(index, event.target.value)}>
+                  <div key={index} className="flex flex-wrap items-center gap-stack rounded-lg border border-border bg-muted/10 p-2">
+                    <Input className="h-control-sm w-40" value={binding.schemaId} placeholder="schema_id（如 luna_pinyin）" onChange={(event) => updateBinding(index, { schemaId: event.target.value })} />
+                    <Select className="h-control-sm w-36" value={binding.layoutId} onChange={(event) => setBindingLayout(index, event.target.value)}>
                       {!allLayouts.some((item) => item.id === binding.layoutId) ? <option value={binding.layoutId}>{binding.layoutId} · missing</option> : null}
                       {allLayouts.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.pageRole}</option>)}
                     </Select>
-                    <Input className="h-7 w-36" value={binding.alias ?? ""} placeholder="alias（可留空）" onChange={(event) => updateBinding(index, { alias: event.target.value })} />
-                    <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{bindingAlias(binding)}</code>
-                    <Button size="sm" variant="ghost" className="ml-auto h-7 px-1 text-red-300" onClick={() => removeBinding(index)}><Trash2 /></Button>
+                    <Input className="h-control-sm w-36" value={binding.alias ?? ""} placeholder="alias（可留空）" onChange={(event) => updateBinding(index, { alias: event.target.value })} />
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">{bindingAlias(binding)}</code>
+                    <Button size="sm" variant="ghost" className="ml-auto h-control-sm px-1 text-destructive" aria-label="删除输入法绑定" onClick={() => removeBinding(index)}><Trash2 /></Button>
                   </div>
                 ))}
               </div>
             )}
           </section>
 
-          <section className="rounded-xl border border-border bg-card p-3">
+          <section className="rounded-xl border border-border bg-card p-gutter">
             <h3 className="mb-2 text-xs font-semibold">概要</h3>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-stack sm:grid-cols-2">
               {stats.map(([label, value, detail]) => (
                 <div key={label} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                  <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
+                  <div className="text-3xs uppercase tracking-wider text-muted-foreground">{label}</div>
                   <div className="truncate text-xs font-medium" title={value}>{value}</div>
-                  <div className="truncate text-[9px] text-muted-foreground" title={detail}>{detail}</div>
+                  <div className="truncate text-3xs text-muted-foreground" title={detail}>{detail}</div>
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[10px] text-muted-foreground">编译只读取这份 bundle，并输出每个设备一份完整 trime.yaml。</p>
+            <p className="mt-2 text-2xs text-muted-foreground">编译只读取这份 bundle，并输出每个设备一份完整 trime.yaml。</p>
           </section>
         </div>
       </aside>

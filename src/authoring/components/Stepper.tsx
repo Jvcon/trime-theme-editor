@@ -1,9 +1,9 @@
 import type { StepId, StepState, StepStatus } from "../flow";
 
 const DOT: Record<StepState, string> = {
-  done: "bg-emerald-400 text-emerald-950",
-  warning: "bg-amber-400 text-amber-950",
-  error: "bg-red-400 text-red-950",
+  done: "bg-success text-success-foreground",
+  warning: "bg-warning text-warning-foreground",
+  error: "bg-destructive text-destructive-foreground",
   default: "bg-muted text-muted-foreground",
 };
 
@@ -20,7 +20,7 @@ export function Stepper({ steps, current, onSelect }: {
   onSelect: (id: StepId) => void;
 }) {
   return (
-    <nav className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-card/30 px-4 py-1.5">
+    <nav className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-card/30 px-panel py-1.5">
       {steps.map((step, index) => {
         const active = current === step.id;
         return (
@@ -28,18 +28,19 @@ export function Stepper({ steps, current, onSelect }: {
             key={step.id}
             type="button"
             title={`${STATE_LABEL[step.state]}\n${step.reasons.join("\n")}`}
+            aria-current={active ? "step" : undefined}
             onClick={() => onSelect(step.id)}
-            className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors ${
+            className={`flex min-h-control-sm items-center gap-1.5 rounded-md border px-2 py-1 text-caption transition-colors ${
               active
                 ? "border-primary bg-primary/10 text-primary"
-                : "border-transparent text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                : "border-transparent text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"
             }`}
           >
-            <span className={`grid size-4 place-items-center rounded-full text-[9px] font-semibold ${DOT[step.state]} ${active ? "ring-2 ring-primary/40" : ""}`}>
+            <span className={`grid size-4 place-items-center rounded-full text-3xs font-semibold ${DOT[step.state]} ${active ? "ring-2 ring-primary/40" : ""}`}>
               {index + 1}
             </span>
             <span>{step.label}</span>
-            {step.optional ? <span className="text-[8px] uppercase tracking-wider opacity-70">可选</span> : null}
+            {step.optional ? <span className="text-4xs uppercase tracking-wider opacity-70">可选</span> : null}
             <span className={`size-1.5 rounded-full ${DOT[step.state].split(" ")[0]}`} />
           </button>
         );

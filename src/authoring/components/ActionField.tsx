@@ -24,7 +24,7 @@ export function ActionField({ action, libs, onChange }: Props) {
 
   return (
     <div className="space-y-1">
-      <Select className="h-7" value={kind} onChange={(event) => setKind(event.target.value)}>
+      <Select className="h-control-sm" value={kind} onChange={(event) => setKind(event.target.value)}>
         <option value="none">None</option>
         <option value="char">Character</option>
         <option value="text">Text / macro text</option>
@@ -37,7 +37,7 @@ export function ActionField({ action, libs, onChange }: Props) {
       </Select>
 
       {action?.kind === "key" ? (
-        <Select className="h-7" value={action.value} onChange={(event) => onChange({ kind: "key", value: event.target.value })}>
+        <Select className="h-control-sm" value={action.value} onChange={(event) => onChange({ kind: "key", value: event.target.value })}>
           <option value="">Select keycode…</option>
           {KEYCODES.map((group) => (
             <optgroup key={group.id} label={group.label}>
@@ -48,41 +48,41 @@ export function ActionField({ action, libs, onChange }: Props) {
       ) : null}
 
       {action?.kind === "macro" ? (
-        <Select className="h-7" value={action.id} onChange={(event) => onChange({ kind: "macro", id: event.target.value })}>
+        <Select className="h-control-sm" value={action.id} onChange={(event) => onChange({ kind: "macro", id: event.target.value })}>
           {libs.macros.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
         </Select>
       ) : null}
 
       {action?.kind === "page" ? (
-        <Select className="h-7" value={action.id} onChange={(event) => onChange({ kind: "page", id: event.target.value })}>
+        <Select className="h-control-sm" value={action.id} onChange={(event) => onChange({ kind: "page", id: event.target.value })}>
           {libs.layouts.map((item) => <option key={item.id} value={item.id}>{item.name}{item.builtin ? "" : " · custom"}</option>)}
         </Select>
       ) : null}
 
       {action?.kind === "toggle" ? (
-        <Select className="h-7" value={action.value} onChange={(event) => onChange({ kind: "toggle", value: event.target.value })}>
+        <Select className="h-control-sm" value={action.value} onChange={(event) => onChange({ kind: "toggle", value: event.target.value })}>
           {TOGGLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </Select>
       ) : null}
 
       {action?.kind === "command" ? (
         <div className="space-y-1">
-          <Select className="h-7" value={action.value} onChange={(event) => {
+          <Select className="h-control-sm" value={action.value} onChange={(event) => {
             const command = COMMANDS.find((item) => item.value === event.target.value);
             onChange({ kind: "command", value: event.target.value, option: command?.option });
           }}>
             {COMMANDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>
-          {action.option !== undefined ? <Input className="h-7" value={action.option} onChange={(event) => onChange({ ...action, option: event.target.value })} placeholder="option" /> : null}
+          {action.option !== undefined ? <Input className="h-control-sm" value={action.option} onChange={(event) => onChange({ ...action, option: event.target.value })} placeholder="option" /> : null}
         </div>
       ) : null}
 
       {action?.kind === "preset" ? (
-        <Input className="h-7" value={action.value} onChange={(event) => onChange({ kind: "preset", value: event.target.value })} placeholder="preset_keys 名称" />
+        <Input className="h-control-sm" value={action.value} onChange={(event) => onChange({ kind: "preset", value: event.target.value })} placeholder="preset_keys 名称" />
       ) : null}
 
       {action && ["char", "text"].includes(action.kind) ? (
-        <Input className="h-7" value={"value" in action ? action.value : ""} onChange={(event) => onChange({ ...action, value: event.target.value } as ActionRef)} placeholder={action.kind === "char" ? "单个字符" : "文本"} />
+        <Input className="h-control-sm" value={"value" in action ? action.value : ""} onChange={(event) => onChange({ ...action, value: event.target.value } as ActionRef)} placeholder={action.kind === "char" ? "单个字符" : "文本"} />
       ) : null}
     </div>
   );

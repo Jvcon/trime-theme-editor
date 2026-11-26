@@ -46,11 +46,11 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
   }, [query]);
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <div className="rounded-xl border border-border bg-card p-gutter">
+      <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Insert action</span>
         <Badge variant="success">{targetBehavior}</Badge>
-        <span className="ml-auto text-[9px] text-muted-foreground">先选键，再点目标行为与内容</span>
+        <span className="ml-auto text-3xs text-muted-foreground">先选键，再点目标行为与内容</span>
       </div>
 
       <div className="mb-2 flex flex-wrap gap-1">
@@ -58,13 +58,14 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
           <button
             key={id}
             type="button"
-            className={`rounded border px-1.5 py-0.5 text-[9px] ${targetBehavior === id ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}
+            aria-pressed={targetBehavior === id}
+            className={`rounded-control border px-1.5 py-0.5 text-3xs transition-colors ${targetBehavior === id ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
             onClick={() => setTargetBehavior(id)}
           >
             {label}
           </button>
         ))}
-        <Button size="sm" variant="ghost" className="ml-auto h-6 px-1 text-[9px]" onClick={() => onAssign(undefined)}>
+        <Button size="sm" variant="ghost" className="ml-auto h-control-xs px-1 text-3xs" onClick={() => onAssign(undefined)}>
           <Eraser className="size-3" /> Clear
         </Button>
       </div>
@@ -79,12 +80,12 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
         </TabsList>
 
         <div className="mt-2">
-          <Input className="mb-2 h-7" placeholder="Search…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Input className="mb-2 h-control-sm" placeholder="Search…" value={query} onChange={(event) => setQuery(event.target.value)} />
 
           <TabsContent value="characters" className="mt-0">
             <div className="mb-2 flex flex-wrap gap-1">
               {CHARACTER_SETS.map((item) => (
-                <button key={item.id} type="button" title={item.description} className={`rounded border px-1.5 py-0.5 text-[9px] ${setId === item.id ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`} onClick={() => setSetId(item.id)}>
+                <button key={item.id} type="button" title={item.description} aria-pressed={setId === item.id} className={`rounded-control border px-1.5 py-0.5 text-3xs transition-colors ${setId === item.id ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`} onClick={() => setSetId(item.id)}>
                   {item.label}
                 </button>
               ))}
@@ -97,15 +98,15 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
               }
               onAssign(value.length <= 2 ? { kind: "char", value } : { kind: "text", value });
             }} />
-            {characters.length === 0 ? <p className="py-3 text-center text-[10px] text-muted-foreground">没有匹配的字符</p> : null}
+            {characters.length === 0 ? <p className="py-3 text-center text-2xs text-muted-foreground">没有匹配的字符</p> : null}
           </TabsContent>
 
           <TabsContent value="keycodes" className="mt-0 max-h-52 space-y-2 overflow-auto">
             {keycodes.map((group) => (
               <div key={group.id}>
-                <div className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">{group.label}</div>
+                <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">{group.label}</div>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-1">
-                  {group.items.map((item) => <button key={item} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-[9px] hover:border-primary" onClick={() => onAssign({ kind: "key", value: item })}>{item}</button>)}
+                  {group.items.map((item) => <button key={item} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-3xs hover:border-primary" onClick={() => onAssign({ kind: "key", value: item })}>{item}</button>)}
                 </div>
               </div>
             ))}
@@ -114,9 +115,9 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
           <TabsContent value="macros" className="mt-0 max-h-52 overflow-auto">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-1">
               {libs.macros.map((item) => (
-                <button key={item.id} type="button" className="min-h-8 whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-[10px]" onClick={() => onAssign({ kind: "macro", id: item.id })}>
+                <button key={item.id} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "macro", id: item.id })}>
                   {item.name}
-                  <span className="block text-[8px] text-muted-foreground">{item.builtin ? "builtin" : "custom"}</span>
+                  <span className="block text-4xs text-muted-foreground">{item.builtin ? "builtin" : "custom"}</span>
                 </button>
               ))}
             </div>
@@ -125,9 +126,9 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
           <TabsContent value="pages" className="mt-0 max-h-52 overflow-auto">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(74px,1fr))] gap-1">
               {libs.layouts.map((item) => (
-                <button key={item.id} type="button" className="min-h-8 whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-[10px]" onClick={() => onAssign({ kind: "page", id: item.id })}>
+                <button key={item.id} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "page", id: item.id })}>
                   {item.name}
-                  <span className="block text-[8px] text-muted-foreground">{item.pageRole}</span>
+                  <span className="block text-4xs text-muted-foreground">{item.pageRole}</span>
                 </button>
               ))}
             </div>
@@ -135,15 +136,15 @@ export function Selector({ libs, targetBehavior, setTargetBehavior, onAssign }: 
 
           <TabsContent value="options" className="mt-0 space-y-2">
             <div>
-              <div className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">Toggles</div>
+              <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">Toggles</div>
               <div className="grid grid-cols-2 gap-1">
-                {TOGGLES.map((item) => <button key={item.value} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-[10px]" onClick={() => onAssign({ kind: "toggle", value: item.value })}>{item.label}</button>)}
+                {TOGGLES.map((item) => <button key={item.value} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "toggle", value: item.value })}>{item.label}</button>)}
               </div>
             </div>
             <div>
-              <div className="mb-1 text-[9px] uppercase tracking-wider text-muted-foreground">Commands</div>
+              <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">Commands</div>
               <div className="grid grid-cols-2 gap-1">
-                {COMMANDS.map((item) => <button key={item.value} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-[10px]" onClick={() => onAssign({ kind: "command", value: item.value, option: item.option })}>{item.label}</button>)}
+                {COMMANDS.map((item) => <button key={item.value} type="button" className="rounded border border-border bg-muted/20 px-1 py-1 text-2xs" onClick={() => onAssign({ kind: "command", value: item.value, option: item.option })}>{item.label}</button>)}
               </div>
             </div>
           </TabsContent>
@@ -157,7 +158,7 @@ function Grid({ items, onPick }: { items: string[]; onPick: (value: string) => v
   return (
     <div className="grid max-h-40 grid-cols-[repeat(auto-fill,minmax(34px,1fr))] gap-1 overflow-auto">
       {items.map((item) => (
-        <button key={item} type="button" className="min-h-8 whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-center text-[10px] hover:border-primary" onClick={() => onPick(item)}>
+        <button key={item} type="button" className="min-h-control whitespace-normal break-words rounded border border-border bg-muted/20 px-1 py-1 text-center text-2xs hover:border-primary" onClick={() => onPick(item)}>
           {item}
         </button>
       ))}

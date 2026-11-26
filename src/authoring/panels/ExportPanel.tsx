@@ -152,10 +152,10 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
   };
 
   return (
-    <div className="h-full overflow-auto p-5">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="h-full overflow-auto p-section">
+      <div className="mb-3 flex flex-wrap items-center gap-stack">
         <span className="text-sm font-semibold">检查与导出</span>
-        <Select className="h-7 w-52" value={activeDeviceId} onChange={(event) => setDeviceId(event.target.value)}>
+        <Select className="h-control-sm w-52" value={activeDeviceId} onChange={(event) => setDeviceId(event.target.value)}>
           {project.devices.map((item) => (
             <option key={item.id} value={item.id}>
               {deviceLabel(item, true)}
@@ -176,35 +176,35 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         </div>
       </div>
 
-      <p className="mb-3 text-[10px] text-muted-foreground">
+      <p className="mb-3 text-2xs text-muted-foreground">
         每个设备输出一份完整 <code>trime.yaml</code>；manifest 包含 device、path、sha256、projectHash 和 editorVersion。不会写盘。
       </p>
 
-      <section className="mb-3 rounded-xl border border-border bg-card p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
+      <section className="mb-3 rounded-xl border border-border bg-card p-gutter">
+        <div className="mb-2 flex flex-wrap items-center gap-stack">
           <h3 className="text-xs font-semibold">设备检查</h3>
           <Badge variant={readyCount === deviceResults.length ? "success" : "warning"}>{readyCount}/{deviceResults.length} 可导出</Badge>
-          <span className="text-[9px] text-muted-foreground">error 会阻断"可导出"状态；warning 不阻断</span>
-          <Button size="sm" variant="ghost" className="ml-auto h-7 text-[10px]" onClick={downloadAll}>全部下载</Button>
+          <span className="text-3xs text-muted-foreground">error 会阻断"可导出"状态；warning 不阻断</span>
+          <Button size="sm" variant="ghost" className="ml-auto h-control-sm text-2xs" onClick={downloadAll}>全部下载</Button>
         </div>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-stack md:grid-cols-2">
           {deviceResults.map((result) => (
             <div
               key={result.device.id}
-              className={`rounded-lg border p-2 ${result.errorCount ? "border-red-500/40 bg-red-500/5" : result.warningCount ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-muted/10"}`}
+              className={`rounded-lg border p-2 ${result.errorCount ? "border-destructive/40 bg-destructive/5" : result.warningCount ? "border-warning/30 bg-warning/5" : "border-border bg-muted/10"}`}
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-stack">
                 <span className="text-xs font-medium">{deviceLabel(result.device, true)}</span>
                 <Badge variant={result.errorCount ? "danger" : result.warningCount ? "warning" : "success"}>
                   {result.errorCount ? `${result.errorCount} 个错误` : result.warningCount ? `${result.warningCount} 个警告` : "可导出"}
                 </Badge>
                 <div className="ml-auto flex gap-1">
-                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => setDeviceId(result.device.id)}>查看源码</Button>
-                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => void copyDevice(result.device.id, result.yaml)}><Copy />复制</Button>
-                  <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => downloadDevice(result.device.id, result.yaml)}><Download />下载</Button>
+                  <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => setDeviceId(result.device.id)}>查看源码</Button>
+                  <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => void copyDevice(result.device.id, result.yaml)}><Copy />复制</Button>
+                  <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => downloadDevice(result.device.id, result.yaml)}><Download />下载</Button>
                 </div>
               </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-muted-foreground">
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-3xs text-muted-foreground">
                 <span>布局：<span className="text-foreground">{result.layout?.name ?? "—"}</span>{result.layout && result.layout.id !== result.layout.name ? ` (${result.layout.id})` : ""}</span>
                 <span>schema：{result.schema.length ? `${result.schema.length} errors` : "ok"}</span>
               </div>
@@ -213,30 +213,30 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         </div>
       </section>
 
-      <section className="mb-3 rounded-xl border border-border bg-card p-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <section className="mb-3 rounded-xl border border-border bg-card p-gutter">
+        <div className="flex flex-wrap items-center gap-stack">
           <h3 className="text-xs font-semibold">与快照对比</h3>
-          <Select className="h-7 w-64" value={compareKey} onChange={(event) => setCompareKey(event.target.value)}>
+          <Select className="h-control-sm w-64" value={compareKey} onChange={(event) => setCompareKey(event.target.value)}>
             <option value="">不对比</option>
             {snapshots.map((snapshot) => <option key={snapshot.key} value={snapshot.key}>{snapshot.label} · {new Date(snapshot.createdAt).toLocaleString()}</option>)}
           </Select>
-          {compareKey ? <Badge variant={added || removed ? "warning" : "success"}>+{added} / -{removed} 行</Badge> : <span className="text-[10px] text-muted-foreground">在项目抽屉里创建快照后可对比</span>}
+          {compareKey ? <Badge variant={added || removed ? "warning" : "success"}>+{added} / -{removed} 行</Badge> : <span className="text-2xs text-muted-foreground">在项目抽屉里创建快照后可对比</span>}
           {compareKey ? (
             <div className="ml-auto flex items-center gap-1">
-              <Button size="sm" variant={diffView === "yaml" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("yaml")}>YAML 行</Button>
-              <Button size="sm" variant={diffView === "structured" ? "secondary" : "ghost"} className="h-7" onClick={() => setDiffView("structured")}>结构化 · {structuredCount}</Button>
-              <Button size="sm" variant="ghost" className="h-7" onClick={() => void copyDiff()}>复制 .md</Button>
-              <Button size="sm" variant="ghost" className="h-7" onClick={() => downloadFile(markdown, `${slug(project.meta.name)}-diff.md`, "text/markdown;charset=utf-8")}>下载 .md</Button>
+              <Button size="sm" variant={diffView === "yaml" ? "secondary" : "ghost"} className="h-control-sm" onClick={() => setDiffView("yaml")}>YAML 行</Button>
+              <Button size="sm" variant={diffView === "structured" ? "secondary" : "ghost"} className="h-control-sm" onClick={() => setDiffView("structured")}>结构化 · {structuredCount}</Button>
+              <Button size="sm" variant="ghost" className="h-control-sm" onClick={() => void copyDiff()}>复制 .md</Button>
+              <Button size="sm" variant="ghost" className="h-control-sm" onClick={() => downloadFile(markdown, `${slug(project.meta.name)}-diff.md`, "text/markdown;charset=utf-8")}>下载 .md</Button>
             </div>
           ) : null}
         </div>
         {compareKey && diffView === "structured" ? (
-          <Input className="mt-2 h-7" placeholder="Filter paths or values…" value={diffQuery} onChange={(event) => setDiffQuery(event.target.value)} />
+          <Input className="mt-2 h-control-sm" placeholder="Filter paths or values…" value={diffQuery} onChange={(event) => setDiffQuery(event.target.value)} />
         ) : null}
         {compareKey && diffView === "yaml" ? (
-          <div className="mt-2 max-h-72 overflow-auto rounded border border-border bg-background p-2 font-mono text-[9px] leading-relaxed">
+          <div className="mt-2 max-h-72 overflow-auto rounded border border-border bg-background p-2 font-mono text-3xs leading-relaxed">
             {diff.map((op, index) => (
-              <div key={index} className={op.type === "add" ? "bg-emerald-500/10 text-emerald-200" : op.type === "remove" ? "bg-red-500/10 text-red-200" : "text-muted-foreground/60"}>
+              <div key={index} className={op.type === "add" ? "bg-success/10 text-success" : op.type === "remove" ? "bg-destructive/10 text-destructive" : "text-muted-foreground/60"}>
                 <span className="inline-block w-3 select-none">{op.type === "add" ? "+" : op.type === "remove" ? "-" : " "}</span>
                 <span className="whitespace-pre-wrap break-all">{op.text || " "}</span>
               </div>
@@ -245,26 +245,26 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         ) : null}
         {compareKey && diffView === "structured" ? (
           <div className="mt-2 max-h-72 space-y-2 overflow-auto rounded border border-border bg-background p-2">
-            {visibleStructured.length === 0 ? <p className="text-[10px] text-muted-foreground">{structured.length === 0 ? "没有结构化差异。" : "没有匹配的差异。"}</p> : null}
+            {visibleStructured.length === 0 ? <p className="text-2xs text-muted-foreground">{structured.length === 0 ? "没有结构化差异。" : "没有匹配的差异。"}</p> : null}
             {visibleStructured.map((section) => (
               <div key={section.id}>
-                <div className="mb-1 flex items-center gap-2 text-[10px] font-semibold">
+                <div className="mb-1 flex items-center gap-stack text-2xs font-semibold">
                   <span>{section.title}</span>
                   <Badge variant="muted">{section.entries.length + section.truncated}</Badge>
                 </div>
                 <div className="space-y-0.5">
                   {section.entries.map((entry, index) => (
-                    <div key={`${entry.path}-${index}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded px-1 py-0.5 text-[9px] hover:bg-muted/30">
+                    <div key={`${entry.path}-${index}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded px-1 py-0.5 text-3xs hover:bg-muted/30">
                       <Badge variant={entry.kind === "added" ? "success" : entry.kind === "removed" ? "danger" : "warning"}>{entry.kind}</Badge>
                       <code className="min-w-0 break-all text-muted-foreground">{entry.path}</code>
                       <span className="whitespace-pre-wrap break-all">
-                        {entry.before !== undefined ? <span className="text-red-300">{entry.before}</span> : null}
+                        {entry.before !== undefined ? <span className="text-destructive">{entry.before}</span> : null}
                         {entry.before !== undefined && entry.after !== undefined ? <span className="text-muted-foreground"> → </span> : null}
-                        {entry.after !== undefined ? <span className="text-emerald-300">{entry.after}</span> : null}
+                        {entry.after !== undefined ? <span className="text-success">{entry.after}</span> : null}
                       </span>
                     </div>
                   ))}
-                  {section.truncated > 0 ? <p className="px-1 text-[9px] text-amber-300">还有 {section.truncated} 项未显示。</p> : null}
+                  {section.truncated > 0 ? <p className="px-1 text-3xs text-warning">还有 {section.truncated} 项未显示。</p> : null}
                 </div>
               </div>
             ))}
@@ -272,13 +272,13 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         ) : null}
       </section>
 
-      <section className="mb-3 rounded-xl border border-border bg-card p-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <section className="mb-3 rounded-xl border border-border bg-card p-gutter">
+        <div className="flex flex-wrap items-center gap-stack">
           <h3 className="text-xs font-semibold">更多工具 · 与现有 trime.yaml 对比</h3>
-          <span className="text-[10px] text-muted-foreground">归一化后对比当前 device 的生成结果</span>
-          <label className="ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded border border-border px-2 text-[10px] hover:bg-muted">
+          <span className="text-2xs text-muted-foreground">归一化后对比当前 device 的生成结果</span>
+          <label className="ml-auto inline-flex h-control-sm cursor-pointer items-center gap-1 rounded-control border border-border px-2 text-2xs transition-colors hover:bg-surface-hover active:bg-surface-active focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
             <Upload className="size-3" /> Compare file
-            <input type="file" accept=".yaml,.yml,text/yaml" hidden onChange={(event) => {
+            <input type="file" accept=".yaml,.yml,text/yaml" className="sr-only" onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
               if (file) void pickDriftFile(file);
@@ -289,22 +289,22 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
               {drift.canonical === yaml ? "up to date" : `+${driftAdded} / -${driftRemoved} lines`}
             </Badge>
           ) : null}
-          {drift ? <Button size="sm" variant="ghost" className="h-7 px-1 text-[10px]" onClick={() => setDrift(null)}><X />Clear</Button> : null}
+          {drift ? <Button size="sm" variant="ghost" className="h-control-sm px-1 text-2xs" onClick={() => setDrift(null)}><X />Clear</Button> : null}
         </div>
         {drift ? (
           <div className="mt-2">
-            <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-stack text-2xs text-muted-foreground">
               <span>{drift.name}</span>
               <Badge variant={driftSchemaIssues.length ? "danger" : "success"}>
                 schema {driftSchemaIssues.length ? `${driftSchemaIssues.length} errors` : "ok"}
               </Badge>
             </div>
             {drift.canonical === yaml ? (
-              <p className="mt-2 text-[10px] text-emerald-300">与当前生成结果一致（忽略注释和键顺序）。</p>
+              <p className="mt-2 text-2xs text-success">与当前生成结果一致（忽略注释和键顺序）。</p>
             ) : (
-              <div className="mt-2 max-h-64 overflow-auto rounded border border-border bg-background p-2 font-mono text-[9px] leading-relaxed">
+              <div className="mt-2 max-h-64 overflow-auto rounded border border-border bg-background p-2 font-mono text-3xs leading-relaxed">
                 {driftDiff.map((op, index) => (
-                  <div key={index} className={op.type === "add" ? "bg-emerald-500/10 text-emerald-200" : op.type === "remove" ? "bg-red-500/10 text-red-200" : "text-muted-foreground/60"}>
+                  <div key={index} className={op.type === "add" ? "bg-success/10 text-success" : op.type === "remove" ? "bg-destructive/10 text-destructive" : "text-muted-foreground/60"}>
                     <span className="inline-block w-3 select-none">{op.type === "add" ? "+" : op.type === "remove" ? "-" : " "}</span>
                     <span className="whitespace-pre-wrap break-all">{op.text || " "}</span>
                   </div>
@@ -314,7 +314,7 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
             {driftSchemaIssues.length > 0 ? (
               <div className="mt-2 space-y-1">
                 {driftSchemaIssues.map((issue, index) => (
-                  <div key={index} className="flex items-start gap-2 text-[10px]">
+                  <div key={index} className="flex items-start gap-stack text-2xs">
                     <Badge variant="danger">schema</Badge>
                     <code className="text-muted-foreground">{issue.path}</code>
                     <span className="whitespace-pre-wrap break-words">{issue.message}</span>
@@ -327,11 +327,11 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
       </section>
 
       {issues.length > 0 ? (
-        <section className="mb-3 rounded-xl border border-border bg-card p-3">
+        <section className="mb-3 rounded-xl border border-border bg-card p-gutter">
           <h3 className="mb-1 text-xs font-semibold">Validation</h3>
           <div className="space-y-1">
             {issues.map((issue, index) => (
-              <div key={index} className="flex items-start gap-2 text-[10px]">
+              <div key={index} className="flex items-start gap-stack text-2xs">
                 <Badge variant={issue.level === "error" ? "danger" : "warning"}>{issue.level}</Badge>
                 <span className="whitespace-pre-wrap break-words">{issue.message}</span>
               </div>
@@ -341,13 +341,13 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
       ) : null}
 
       {schemaIssues.length > 0 ? (
-        <section className="mb-3 rounded-xl border border-border bg-card p-3">
-          <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold">
+        <section className="mb-3 rounded-xl border border-border bg-card p-gutter">
+          <h3 className="mb-1 flex items-center gap-stack text-xs font-semibold">
             Trime schema <Badge variant="muted">v{TRIME_SCHEMA_VERSION}</Badge>
           </h3>
           <div className="space-y-1">
             {schemaIssues.map((issue, index) => (
-              <div key={index} className="flex items-start gap-2 text-[10px]">
+              <div key={index} className="flex items-start gap-stack text-2xs">
                 <Badge variant="danger">schema</Badge>
                 <code className="text-muted-foreground">{issue.path}</code>
                 <span className="whitespace-pre-wrap break-words">{issue.message}</span>
@@ -358,17 +358,17 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
       ) : null}
 
       <section className="rounded-xl border border-border bg-card">
-        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <span className="font-mono text-[10px]">{fileName}</span>
-          <span className="text-[9px] text-muted-foreground">{yaml.split("\n").length} lines · {new Blob([yaml]).size} bytes</span>
+        <div className="flex items-center gap-stack border-b border-border px-3 py-2">
+          <span className="font-mono text-2xs">{fileName}</span>
+          <span className="text-3xs text-muted-foreground">{yaml.split("\n").length} lines · {new Blob([yaml]).size} bytes</span>
           <div className="ml-auto flex gap-1">
-            <Button size="sm" variant="ghost" className="h-6 px-1 text-[9px]" onClick={() => void copy()}><Copy />Copy</Button>
+            <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => void copy()}><Copy />Copy</Button>
           </div>
         </div>
         <textarea
           readOnly
           value={yaml}
-          className="h-[calc(100vh-19rem)] min-h-96 w-full resize-none rounded-b-xl bg-background p-3 font-mono text-[10px] leading-relaxed outline-none"
+          className="h-[calc(100vh-19rem)] min-h-96 w-full resize-none rounded-b-xl bg-background p-gutter font-mono text-2xs leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           spellCheck={false}
         />
       </section>

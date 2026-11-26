@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Boxes, Copy, Download, Eye, EyeOff, FolderOpen, Redo2, Save, SlidersHorizontal, Undo2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ThemeModeToggle } from "@/components/ThemeModeToggle";
 import { compileBundle, defaultBundle } from "./compiler";
 import { deleteProject, deleteSnapshot, importSnapshots, listProjects, listSnapshots, loadProject, saveProject, saveSnapshot, type Snapshot } from "./storage";
 import { AdvancedDrawer } from "./components/AdvancedDrawer";
@@ -492,33 +493,34 @@ export function AuthoringApp({ open = true, onClose }: Props) {
 
   return (
     <div className={`${onClose ? "fixed inset-0 z-50" : "h-full"} flex flex-col bg-background text-foreground`}>
-      <header className="flex h-14 shrink-0 items-center gap-3 overflow-x-auto border-b border-border bg-card/60 px-4">
-        <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-blue-500 to-teal-400 text-slate-950">
-          <Boxes className="size-4" />
+      <header className="flex h-14 shrink-0 items-center gap-3 overflow-x-auto border-b border-border bg-card/60 px-panel">
+        <div className="grid h-control w-control shrink-0 place-items-center rounded-control bg-gradient-to-br from-primary to-success text-primary-foreground shadow-control">
+          <Boxes className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 leading-tight">
           <div className="text-sm font-semibold">Trime Theme Editor</div>
-          <div className="truncate text-[10px] text-muted-foreground" title={project.meta.name}>
+          <div className="truncate text-2xs text-muted-foreground" title={project.meta.name}>
             {board === "start" ? "从一个模板或现有主题开始" : project.meta.name}
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
-          {message ? <span className="hidden max-w-56 truncate text-[10px] text-muted-foreground lg:inline" title={message}>{message}</span> : null}
+          {message ? <span className="hidden max-w-56 truncate text-2xs text-muted-foreground lg:inline" title={message}>{message}</span> : null}
           <Badge variant={loading ? "muted" : dirty ? "warning" : "success"}>{loading ? "loading" : dirty ? "unsaved" : "saved"}</Badge>
-          <Button size="icon" variant="ghost" title="撤销 (Ctrl/Cmd+Z)" onClick={undo}><Undo2 /></Button>
-          <Button size="icon" variant="ghost" title="重做 (Shift+Ctrl/Cmd+Z)" onClick={redo}><Redo2 /></Button>
+          <ThemeModeToggle />
+          <Button size="icon" variant="ghost" aria-label="撤销" title="撤销 (Ctrl/Cmd+Z)" onClick={undo}><Undo2 /></Button>
+          <Button size="icon" variant="ghost" aria-label="重做" title="重做 (Shift+Ctrl/Cmd+Z)" onClick={redo}><Redo2 /></Button>
           <Button size="sm" variant="secondary" onClick={() => void save()}><Save />保存</Button>
           <Button size="sm" variant="outline" onClick={() => void copyYaml()}><Copy />YAML</Button>
           <Button size="sm" variant="outline" onClick={() => downloadText(yaml, `${slug(project.meta.name)}-${project.devices[0]?.id ?? "device"}.yaml`, "text/yaml;charset=utf-8")}><Download />下载</Button>
           <Button size="sm" variant="outline" onClick={() => setProjectsOpen(true)}><FolderOpen />项目</Button>
           <Button size="sm" variant="outline" onClick={() => setAdvancedOpen(true)}><SlidersHorizontal />高级</Button>
           {board !== "layouts" ? (
-            <Button size="icon" variant="ghost" className="hidden lg:inline-flex" title={previewOpen ? "收起预览" : "打开预览"} onClick={() => setPreviewOpen((value) => !value)}>
+            <Button size="icon" variant="ghost" className="hidden lg:inline-flex" aria-label={previewOpen ? "收起预览" : "打开预览"} title={previewOpen ? "收起预览" : "打开预览"} onClick={() => setPreviewOpen((value) => !value)}>
               {previewOpen ? <EyeOff /> : <Eye />}
             </Button>
           ) : null}
-          {onClose ? <Button size="icon" variant="ghost" onClick={onClose}><X /></Button> : null}
+          {onClose ? <Button size="icon" variant="ghost" aria-label="关闭编辑器" onClick={onClose}><X /></Button> : null}
         </div>
       </header>
 
@@ -527,7 +529,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
       ) : null}
 
       {board !== "start" && currentStatus ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-4 py-1 text-[10px] text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center gap-stack border-b border-border bg-muted/20 px-panel py-1 text-2xs text-muted-foreground">
           <Badge
             variant={currentStatus.state === "error" ? "danger" : currentStatus.state === "warning" ? "warning" : currentStatus.state === "done" ? "success" : "muted"}
           >
@@ -535,7 +537,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           </Badge>
           <span className="text-foreground">{currentStatus.summary}</span>
           <span className="truncate">· {currentStatus.reasons[0]}</span>
-          {currentStatus.optional ? <span className="text-[9px]">· 可选，可跳过</span> : null}
+          {currentStatus.optional ? <span className="text-3xs">· 可选，可跳过</span> : null}
           {board === "layouts" && activeLayoutName ? <span className="ml-auto">正在编辑：{activeLayoutName}</span> : null}
         </div>
       ) : null}
@@ -584,9 +586,9 @@ export function AuthoringApp({ open = true, onClose }: Props) {
           {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} /> : null}
           {board === "macros" ? (
             <div className="flex h-full min-h-0 flex-col">
-              <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-                <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => setBoard("theme")}>← 返回主题</Button>
-                <span className="text-[10px] text-muted-foreground">宏是可选工具；未使用的宏不会进入导出。</span>
+              <div className="flex shrink-0 items-center gap-stack border-b border-border px-panel py-2">
+                <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={() => setBoard("theme")}>← 返回主题</Button>
+                <span className="text-2xs text-muted-foreground">宏是可选工具；未使用的宏不会进入导出。</span>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
                 <MacrosPanel project={project} libs={libs} mutate={commit} setMessage={setMessage} />

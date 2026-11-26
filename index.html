@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +7,21 @@
       name="description"
       content="Trime 主题编辑器：在浏览器中组合主题色卡、键盘布局与宏，编译为单文件 trime.yaml。"
     />
-    <meta name="theme-color" content="#1e1b4b" />
+    <meta name="theme-color" content="#0b1118" id="theme-color" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Trime Theme Editor</title>
+    <script>
+      // Apply the saved editor mode before paint to avoid a light/dark flash.
+      try {
+        const stored = localStorage.getItem("trime-theme-mode");
+        const mode = stored === "light" || stored === "dark" ? stored : "dark";
+        document.documentElement.classList.toggle("dark", mode === "dark");
+        document.documentElement.dataset.theme = mode;
+        document.documentElement.style.colorScheme = mode;
+        const meta = document.getElementById("theme-color");
+        if (meta) meta.setAttribute("content", mode === "dark" ? "#0b1118" : "#f6f8fa");
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -91,7 +91,7 @@ function ToolbarButtonView({ button, colors }: { button: ToolbarButton; colors: 
       style={{ width, height, background, color: foreground, borderColor: colors.border }}
       title={`${button.action}${button.longPressAction ? ` · long: ${button.longPressAction}` : ""}`}
     >
-      {icon ? <Icon name={icon} /> : <span className="max-w-full truncate px-1 text-[9px]">{button.label ?? button.action}</span>}
+      {icon ? <Icon name={icon} /> : <span className="max-w-full truncate px-1 text-3xs">{button.label ?? button.action}</span>}
     </button>
   );
 }
@@ -100,10 +100,10 @@ export function ToolbarPreview({ project, libs }: { project: ProjectBundle; libs
   const colors = palette(project, libs);
   const toolbar = (project.chrome ?? defaultChrome()).toolbar;
   return (
-    <section className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="rounded-xl border border-border bg-card p-gutter">
+      <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Toolbar preview</span>
-        <span className="text-[9px] text-muted-foreground">primary · buttons · spacing {toolbar.buttonSpacing}px</span>
+        <span className="text-3xs text-muted-foreground">primary · buttons · spacing {toolbar.buttonSpacing}px</span>
       </div>
       <div className="rounded-lg border p-2" style={{ background: colors.surfaceAlt, borderColor: colors.border }}>
         <div className="flex items-center" style={{ gap: toolbar.buttonSpacing }}>
@@ -118,7 +118,7 @@ export function ToolbarPreview({ project, libs }: { project: ProjectBundle; libs
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {[toolbar.primaryButton, ...toolbar.buttons].map((button, index) => (
-          <span key={`${button.action}-${index}`} className="rounded border border-border bg-muted/20 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">{button.action}</span>
+          <span key={`${button.action}-${index}`} className="rounded border border-border bg-muted/20 px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">{button.action}</span>
         ))}
       </div>
     </section>
@@ -134,11 +134,11 @@ export function LiquidPreview({ project, libs, tabId, onTab }: { project: Projec
   const singleWidth = Math.max(28, liquid.singleWidth);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="rounded-xl border border-border bg-card p-gutter">
+      <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Liquid preview</span>
-        <span className="text-[9px] text-muted-foreground">{liquid.tabs.length} tabs · {liquid.singleWidth}px keys · {liquid.marginX}px gap</span>
-        <span className="ml-auto max-w-64 truncate text-[10px]" title={output}>{output ? `输出：${output}` : "点击预览上屏"}</span>
+        <span className="text-3xs text-muted-foreground">{liquid.tabs.length} tabs · {liquid.singleWidth}px keys · {liquid.marginX}px gap</span>
+        <span className="ml-auto max-w-64 truncate text-2xs" title={output}>{output ? `输出：${output}` : "点击预览上屏"}</span>
       </div>
 
       <div className="rounded-lg border p-2" style={{ background: colors.bg, borderColor: colors.border }}>
@@ -147,7 +147,7 @@ export function LiquidPreview({ project, libs, tabId, onTab }: { project: Projec
             <button
               key={tab.id}
               type="button"
-              className="rounded-md border px-2 py-1 text-[10px]"
+              className="rounded-md border px-2 py-1 text-2xs"
               style={selected?.id === tab.id
                 ? { background: colors.primary, color: colors.onPrimary, borderColor: colors.primary }
                 : { background: colors.surface, color: colors.textMuted, borderColor: colors.border }}
@@ -175,7 +175,7 @@ export function LiquidPreview({ project, libs, tabId, onTab }: { project: Projec
                   <span className="line-clamp-2 break-all">{key}</span>
                 </button>
               ))}
-              {(selected.keys ?? []).length === 0 ? <span className="p-2 text-[10px]" style={{ color: colors.textMuted }}>没有 keys</span> : null}
+              {(selected.keys ?? []).length === 0 ? <span className="p-2 text-2xs" style={{ color: colors.textMuted }}>没有 keys</span> : null}
             </div>
           ) : null}
 
@@ -189,15 +189,15 @@ export function LiquidPreview({ project, libs, tabId, onTab }: { project: Projec
                   style={{ background: colors.surfaceAlt, borderColor: colors.border, color: colors.text }}
                   onClick={() => setOutput(`${symbol.label} ${symbol.command}`)}
                 >
-                  <span className="block text-[11px]">{symbol.label}</span>
-                  <span className="block truncate text-[8px]" style={{ color: colors.textMuted }}>{symbol.command}</span>
+                  <span className="block text-caption">{symbol.label}</span>
+                  <span className="block truncate text-4xs" style={{ color: colors.textMuted }}>{symbol.command}</span>
                 </button>
               ))}
             </div>
           ) : null}
 
-          {selected?.type === "HISTORY" ? <p className="p-2 text-[10px]" style={{ color: colors.textMuted }}>历史由运行时提供，编辑器只保留类型。</p> : null}
-          {selected?.type === "TABS" ? <p className="p-2 text-[10px]" style={{ color: colors.textMuted }}>更多 tabs 由运行时展开。</p> : null}
+          {selected?.type === "HISTORY" ? <p className="p-2 text-2xs" style={{ color: colors.textMuted }}>历史由运行时提供，编辑器只保留类型。</p> : null}
+          {selected?.type === "TABS" ? <p className="p-2 text-2xs" style={{ color: colors.textMuted }}>更多 tabs 由运行时展开。</p> : null}
         </div>
 
         {liquid.fixedBar.position !== "top" ? <FixedBar liquid={liquid} colors={colors} /> : null}
@@ -215,7 +215,7 @@ function FixedBar({ liquid, colors }: { liquid: ReturnType<typeof defaultChrome>
       {liquid.fixedBar.keys.map((key, index) => (
         <span
           key={`${key}-${index}`}
-          className="rounded border px-2 py-1 text-[9px]"
+          className="rounded border px-2 py-1 text-3xs"
           style={key.startsWith("Return") || key === "liquid_keyboard_exit"
             ? { background: colors.primary, color: colors.onPrimary, borderColor: colors.primary }
             : { background: colors.surfaceAlt, color: colors.text, borderColor: colors.border }}
@@ -232,10 +232,10 @@ export function WindowPreview({ project, libs }: { project: ProjectBundle; libs:
   const chrome = project.chrome ?? defaultChrome();
   const config = chrome.window;
   return (
-    <section className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="rounded-xl border border-border bg-card p-gutter">
+      <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Window preview</span>
-        <span className="text-[9px] text-muted-foreground">insets {config.verticalInset}/{config.horizontalInset} · radius {config.cornerRadius} · alpha {config.alpha}</span>
+        <span className="text-3xs text-muted-foreground">insets {config.verticalInset}/{config.horizontalInset} · radius {config.cornerRadius} · alpha {config.alpha}</span>
       </div>
       <div
         className="border"
@@ -283,14 +283,14 @@ export function PreeditPreview({ project, libs }: { project: ProjectBundle; libs
   const colors = palette(project, libs);
   const config = (project.chrome ?? defaultChrome()).preedit;
   return (
-    <section className="rounded-xl border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="rounded-xl border border-border bg-card p-gutter">
+      <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Preedit preview</span>
-        <span className="text-[9px] text-muted-foreground">padding {config.horizontalPadding} · radius {config.topStartRadius}/{config.topEndRadius} · alpha {config.alpha}</span>
+        <span className="text-3xs text-muted-foreground">padding {config.horizontalPadding} · radius {config.topStartRadius}/{config.topEndRadius} · alpha {config.alpha}</span>
       </div>
-      <div className="grid min-h-44 place-items-center rounded-lg border p-4" style={{ background: colors.bg, borderColor: colors.border }}>
+      <div className="grid min-h-44 place-items-center rounded-lg border p-panel" style={{ background: colors.bg, borderColor: colors.border }}>
         <div
-          className="inline-flex items-center gap-2 shadow-lg"
+          className="inline-flex items-center gap-stack shadow-raised"
           style={{
             background: colors.surfaceAlt,
             color: colors.text,

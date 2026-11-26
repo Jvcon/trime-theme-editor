@@ -30,19 +30,19 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
   const chrome = project.chrome;
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
-        <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-overlay p-panel">
+      <div role="dialog" aria-modal="true" aria-label="导入 trime.yaml" className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-overlay">
+        <header className="flex items-center gap-stack border-b border-border px-panel py-3">
           <Upload className="size-4" />
           <div className="leading-tight">
             <div className="text-sm font-semibold">Import trime.yaml</div>
-            <div className="text-[10px] text-muted-foreground">{fileName}{resources && Object.keys(resources).length > 0 ? ` + ${Object.keys(resources).length} resources` : ""}</div>
+            <div className="text-2xs text-muted-foreground">{fileName}{resources && Object.keys(resources).length > 0 ? ` + ${Object.keys(resources).length} resources` : ""}</div>
           </div>
-          <Button size="icon" variant="ghost" className="ml-auto" onClick={onCancel}><X /></Button>
+          <Button size="icon" variant="ghost" className="ml-auto" aria-label="关闭导入对话框" onClick={onCancel}><X /></Button>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-          <div className="rounded-lg border border-border bg-muted/20 p-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-auto p-panel">
+          <div className="rounded-lg border border-border bg-muted/20 p-gutter">
             <div className="text-xs font-medium">{project.meta.name}</div>
             <div className="mt-1 flex flex-wrap gap-1">
               <Badge variant="muted">{layouts} layouts</Badge>
@@ -50,14 +50,14 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               <Badge variant="muted">{chrome?.liquid.tabs.length ?? 0} liquid tabs</Badge>
               <Badge variant="muted">{chrome?.toolbar.buttons.length ?? 0} toolbar buttons</Badge>
             </div>
-            <div className="mt-2 text-[10px] text-muted-foreground">
+            <div className="mt-2 text-2xs text-muted-foreground">
               main: <code>{project.mainLayoutId}</code> · author: {project.meta.author || "—"}
             </div>
           </div>
 
           <section className="space-y-2">
             <h3 className="text-xs font-semibold">Style</h3>
-            <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
+            <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
                 type="checkbox"
                 checked={options.themeCard !== false}
@@ -65,7 +65,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               />
               导入 preset_color_schemes 为浅色/深色两个可编辑方案
             </label>
-            <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
+            <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
                 type="checkbox"
                 checked={options.interface !== false}
@@ -77,7 +77,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
 
           <section className="space-y-2">
             <h3 className="text-xs font-semibold">Keyboards</h3>
-            <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
+            <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
                 type="radio"
                 name="keyboards"
@@ -86,7 +86,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               />
               导入全部 preset_keyboards（{allLayouts} 个布局）
             </label>
-            <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
+            <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
                 type="radio"
                 name="keyboards"
@@ -95,7 +95,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               />
               只导入主键盘
             </label>
-            <label className="flex items-center gap-2 rounded border border-border px-2 py-1.5 text-[11px]">
+            <label className="flex items-center gap-stack rounded border border-border px-2 py-1.5 text-caption">
               <input
                 type="checkbox"
                 checked={options.calibrateRows !== false}
@@ -103,7 +103,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
               />
               把导入布局的每一行宽度校准到 100%
             </label>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               只导入主键盘时，页面跳转引用可能悬空，导入后可在 Layouts 里补 page。
             </p>
           </section>
@@ -112,18 +112,18 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
             const entries = preview.report[key];
             if (entries.length === 0) return null;
             const tone = key === "needsReview"
-              ? "border-amber-500/20 bg-amber-500/5 text-amber-100"
+              ? "border-warning/20 bg-warning/5 text-warning"
               : key === "dropped"
-                ? "border-red-500/20 bg-red-500/5 text-red-100"
+                ? "border-destructive/20 bg-destructive/5 text-destructive"
                 : "border-border bg-muted/10 text-muted-foreground";
             return (
               <section key={key} className="space-y-1">
                 <h3 className="flex items-center gap-1 text-xs font-semibold">
-                  {key === "needsReview" ? <AlertTriangle className="size-3 text-amber-300" /> : null}
+                  {key === "needsReview" ? <AlertTriangle className="size-3 text-warning" /> : null}
                   <Badge variant={variant}>{label} · {entries.length}</Badge>
                 </h3>
                 {entries.map((entry, index) => (
-                  <div key={index} className={`flex items-start gap-2 rounded border px-2 py-1 text-[10px] ${tone}`}>
+                  <div key={index} className={`flex items-start gap-stack rounded border px-2 py-1 text-2xs ${tone}`}>
                     <span className="mt-0.5">•</span>
                     <span className="whitespace-pre-wrap break-words">{entry}</span>
                   </div>
@@ -133,7 +133,7 @@ export function ImportDialog({ source, fileName, resources, onApply, onCancel }:
           })}
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+        <footer className="flex items-center justify-end gap-stack border-t border-border px-panel py-3">
           <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
           <Button size="sm" variant="secondary" onClick={() => onApply(preview.project, preview.warnings)}>Apply import</Button>
         </footer>
