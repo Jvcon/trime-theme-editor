@@ -89,7 +89,7 @@ describe("manifest", () => {
   it("lists every device with a deterministic sha256", async () => {
     const bundle = matrixBundle();
     const manifest = await buildManifest(bundle);
-    expect(manifest.editorVersion).toBe("0.2.0");
+    expect(manifest.editorVersion).toBe(EDITOR_VERSION);
     expect(manifest.projectHash).toMatch(/^[0-9a-f]{64}$/);
     expect(manifest.devices.map((device) => device.id)).toEqual([
       "phone-portrait",

@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import { Check, Copy, Download } from "lucide-react";
+import { Check, Copy, Download, Upload, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { compileBundle } from "../compiler";
+import YAML from "yaml";
+import { compileBundle, stringifyTrime } from "../compiler";
 import { diffBundles } from "../diff";
 import { buildManifest } from "../manifest";
+import { TRIME_SCHEMA_VERSION, validateTrimeYaml, type SchemaIssue } from "../schema";
 import type { Snapshot } from "../storage";
 import type { ProjectBundle } from "../types";
 import { normalizeBundle, slug } from "../utils";
@@ -19,19 +21,31 @@ type Props = {
 
 type Issue = { level: "error" | "warning"; message: string };
 
+type DriftFile = {
+  name: string;
+  original: string;
+  canonical: string;
+};
+
 export function ExportPanel({ project, snapshots, setMessage }: Props) {
   const [copied, setCopied] = useState(false);
   const [compareKey, setCompareKey] = useState("");
   const [diffView, setDiffView] = useState<"yaml" | "structured">("yaml");
   const [diffQuery, setDiffQuery] = useState("");
   const [deviceId, setDeviceId] = useState(project.devices[0]?.id ?? "");
+  const [drift, setDrift] = useState<DriftFile | null>(null);
   const device = project.devices.find((item) => item.id === deviceId) ?? project.devices[0];
   const activeDeviceId = device?.id ?? "";
   const yaml = useMemo(() => compileBundle(project, activeDeviceId), [project, activeDeviceId]);
+  const schemaIssues = useMemo(() => validateTrimeYaml(yaml), [yaml]);
   const issues = useMemo(() => validate(project), [project]);
   const errors = issues.filter((issue) => issue.level === "error");
   const warnings = issues.filter((issue) => issue.level === "warning");
   const fileName = `${slug(project.meta.name)}-${activeDeviceId || "device"}.yaml`;
+  const driftSchemaIssues = useMemo<SchemaIssue[]>(() => (drift ? validateTrimeYaml(drift.original) : []), [drift]);
+  const driftDiff = useMemo(() => (drift ? diffLines(drift.canonical, yaml) : []), [drift, yaml]);
+  const driftAdded = driftDiff.filter((op) => op.type === "add").length;
+  const driftRemoved = driftDiff.filter((op) => op.type === "remove").length;
   const compareYaml = useMemo(() => {
     const snapshot = snapshots.find((item) => item.key === compareKey);
     return snapshot ? compileBundle(normalizeBundle(snapshot.project), activeDeviceId) : "";
@@ -86,6 +100,18 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
     }
   };
 
+  const pickDriftFile = async (file: File) => {
+    try {
+      const original = await file.text();
+      const parsed = YAML.parse(original);
+      const canonical = stringifyTrime(parsed);
+      setDrift({ name: file.name, original, canonical });
+      setMessage(`已载入对比文件：${file.name}`);
+    } catch (error) {
+      setMessage(`读取对比文件失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const copyDiff = async () => {
     if (!markdown) return;
     await navigator.clipboard.writeText(markdown);
@@ -108,6 +134,9 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         <Badge variant="muted">{project.macros.length} macros</Badge>
         <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
           {errors.length ? `${errors.length} errors` : warnings.length ? `${warnings.length} warnings` : "ready"}
+        </Badge>
+        <Badge variant={schemaIssues.length ? "danger" : "success"}>
+          schema {TRIME_SCHEMA_VERSION} · {schemaIssues.length ? `${schemaIssues.length} errors` : "ok"}
         </Badge>
         <div className="ml-auto flex gap-1">
           <Button size="sm" variant="outline" onClick={() => void downloadManifest()}><Download />Manifest</Button>
@@ -179,6 +208,60 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
         ) : null}
       </section>
 
+      <section className="mb-3 rounded-xl border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xs font-semibold">Compare with existing trime.yaml</h3>
+          <span className="text-[10px] text-muted-foreground">归一化后对比当前 device 的生成结果</span>
+          <label className="ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded border border-border px-2 text-[10px] hover:bg-muted">
+            <Upload className="size-3" /> Compare file
+            <input type="file" accept=".yaml,.yml,text/yaml" hidden onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void pickDriftFile(file);
+            }} />
+          </label>
+          {drift ? (
+            <Badge variant={drift.canonical === yaml ? "success" : "warning"}>
+              {drift.canonical === yaml ? "up to date" : `+${driftAdded} / -${driftRemoved} lines`}
+            </Badge>
+          ) : null}
+          {drift ? <Button size="sm" variant="ghost" className="h-7 px-1 text-[10px]" onClick={() => setDrift(null)}><X />Clear</Button> : null}
+        </div>
+        {drift ? (
+          <div className="mt-2">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+              <span>{drift.name}</span>
+              <Badge variant={driftSchemaIssues.length ? "danger" : "success"}>
+                schema {driftSchemaIssues.length ? `${driftSchemaIssues.length} errors` : "ok"}
+              </Badge>
+            </div>
+            {drift.canonical === yaml ? (
+              <p className="mt-2 text-[10px] text-emerald-300">与当前生成结果一致（忽略注释和键顺序）。</p>
+            ) : (
+              <div className="mt-2 max-h-64 overflow-auto rounded border border-border bg-background p-2 font-mono text-[9px] leading-relaxed">
+                {driftDiff.map((op, index) => (
+                  <div key={index} className={op.type === "add" ? "bg-emerald-500/10 text-emerald-200" : op.type === "remove" ? "bg-red-500/10 text-red-200" : "text-muted-foreground/60"}>
+                    <span className="inline-block w-3 select-none">{op.type === "add" ? "+" : op.type === "remove" ? "-" : " "}</span>
+                    <span className="whitespace-pre-wrap break-all">{op.text || " "}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {driftSchemaIssues.length > 0 ? (
+              <div className="mt-2 space-y-1">
+                {driftSchemaIssues.map((issue, index) => (
+                  <div key={index} className="flex items-start gap-2 text-[10px]">
+                    <Badge variant="danger">schema</Badge>
+                    <code className="text-muted-foreground">{issue.path}</code>
+                    <span className="whitespace-pre-wrap break-words">{issue.message}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
       {issues.length > 0 ? (
         <section className="mb-3 rounded-xl border border-border bg-card p-3">
           <h3 className="mb-1 text-xs font-semibold">Validation</h3>
@@ -186,6 +269,23 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
             {issues.map((issue, index) => (
               <div key={index} className="flex items-start gap-2 text-[10px]">
                 <Badge variant={issue.level === "error" ? "danger" : "warning"}>{issue.level}</Badge>
+                <span className="whitespace-pre-wrap break-words">{issue.message}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {schemaIssues.length > 0 ? (
+        <section className="mb-3 rounded-xl border border-border bg-card p-3">
+          <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold">
+            Trime schema <Badge variant="muted">v{TRIME_SCHEMA_VERSION}</Badge>
+          </h3>
+          <div className="space-y-1">
+            {schemaIssues.map((issue, index) => (
+              <div key={index} className="flex items-start gap-2 text-[10px]">
+                <Badge variant="danger">schema</Badge>
+                <code className="text-muted-foreground">{issue.path}</code>
                 <span className="whitespace-pre-wrap break-words">{issue.message}</span>
               </div>
             ))}

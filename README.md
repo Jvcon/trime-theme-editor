@@ -78,12 +78,19 @@ Basic / Layouts / Themes / Interface / Macros / Export
 - 每个 device 输出一份完整 `trime.yaml`
 - 设备切换、复制 / 下载
 - `manifest.json`：device、path、sha256、projectHash、editorVersion
+- 官方 Trime JSON Schema（v3.3.13）校验，显示具体路径与错误
 - 引用、行宽、popup/long_click、liquid tab、preset key、schema alias 校验
+- 上传现有 `trime.yaml` 做归一化漂移对比：
+  - `up to date` / 行级 diff
+  - 同时校验上传文件的 schema
 - 与任一快照对比（同一 device）：
   - YAML 行级 diff
   - 结构化 diff（Meta / Theme / Key styles / Layouts / Macros / Devices /
     Interface / Metrics / Preset keys）
   - 搜索、复制/下载 Markdown
+
+> 目标 Trime 版本固定为 **v3.3.13**；官方 schema 与主题 fixture 位于
+> `fixtures/trime/`。
 
 ## 本地开发
 
@@ -234,6 +241,8 @@ phone / fold / tablet device profiles and schema bindings, then compile each
 device into a single `trime.yaml` plus a deterministic `manifest.json`.
 Import supports multi-file `__include` / `__patch` themes, keeps unmodelled
 fields in `passthrough`, and reports mapped / passthrough / review / dropped
-entries. Projects are stored as self-contained v2 bundles (only the presets
+entries. Generated output is validated against the pinned Trime v3.3.13 JSON
+Schema, and an existing `trime.yaml` can be uploaded for normalized drift
+comparison. Projects are stored as self-contained v2 bundles (only the presets
 actually used) and can be exported/imported as JSON. Everything runs in the
 browser; deploy as static assets on Cloudflare Workers with `npm run deploy`.

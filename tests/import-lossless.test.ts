@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { compileBundle } from "../src/authoring/compiler";
 import { importTrimeYaml } from "../src/authoring/importer";
+import { validateTrimeYaml } from "../src/authoring/schema";
 
 function fixture(name: string): string {
   return readFileSync(new URL(`../fixtures/trime/${name}`, import.meta.url), "utf8");
@@ -74,6 +75,7 @@ describe("lossless import", () => {
     expect(Object.keys(yaml.preset_color_schemes).length).toBeGreaterThan(2);
     expect(result.project.macros.some((macro) => macro.token === "BRIGHTNESS_DOWN")).toBe(true);
     expect(yaml.preset_keys.BRIGHTNESS_DOWN).toBeTruthy();
+    expect(validateTrimeYaml(compileBundle(result.project))).toEqual([]);
   });
 
   it("imports tongwenfeng.trime.yaml without dropping key-level fields", () => {
@@ -84,6 +86,10 @@ describe("lossless import", () => {
       .find((key) => key.key_back_color);
     expect(colored?.key_back_color).toBeTruthy();
     expect(() => compileBundle(result.project)).not.toThrow();
+    // The upstream tongwenfeng fixture uses a scalar button_font while the
+    // pinned schema expects an array; validation should surface it.
+    const issues = validateTrimeYaml(compileBundle(result.project));
+    expect(issues.some((issue) => issue.path === "/tool_bar/button_font")).toBe(true);
   });
 
   it("preserves unmodelled fields through passthrough and keeps row widths", () => {
