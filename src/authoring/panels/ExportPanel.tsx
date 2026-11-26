@@ -318,6 +318,17 @@ function validate(project: ProjectBundle): Issue[] {
     aliases.add(alias);
   }
 
+  const rawKeyboards = project.passthrough?.preset_keyboards;
+  if (rawKeyboards && typeof rawKeyboards === "object" && !Array.isArray(rawKeyboards)) {
+    for (const [id, value] of Object.entries(rawKeyboards as Record<string, unknown>)) {
+      const entry = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+      const target = entry?.import_preset;
+      if (typeof target === "string" && target && !layoutIds.has(target)) {
+        issues.push({ level: "error", message: `preset_keyboards alias ${id} 引用了不存在的布局：${target}` });
+      }
+    }
+  }
+
   return issues.slice(0, 40);
 }
 

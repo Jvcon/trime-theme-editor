@@ -29,7 +29,10 @@ Basic / Layouts / Themes / Interface / Macros / Export
 - Devices：phone / fold / tablet、portrait / landscape、folded / unfolded；
   per-device 主布局与 key / keyboard / candidate 高度覆盖
 - Schema bindings：schema_id → keyset，自动生成 alias keyboard（`import_preset`）
-- 导入现有 `trime.yaml`（含 `base:` 包装的 `rime/trime.base.yaml`）
+- 导入现有 `trime.yaml`（支持多文件、`__include` / `__patch`、`base:` 包装）
+- 导入默认保留原始行宽；校准到 100% 为可选
+- Import report：Mapped / Passthrough / Needs review / Dropped
+- 未建模字段进入 bundle `passthrough`，编译时合并回输出
 - 快照：命名创建、保存前自动快照、恢复、删除、JSON/YAML 导出、快照包导入导出
 - 组合摘要
 
@@ -154,8 +157,8 @@ ThemeCardPreset   色卡 token + 状态
 LayoutPreset      行、键、行为引用、style type、popup
 MacroPreset       text + keycode 序列
 ProjectBundle v2  meta + 内嵌色卡 + layouts/pages + macros + key styles
-                  + chrome + devices + schemaBindings + customPresetKeys
-                  + passthrough
+                  + chrome + devices + schemaBindings + fallbackColors
+                  + customPresetKeys + passthrough
 ```
 
 `ProjectBundle` 就是导出格式，也是编译输入。它只保存项目实际使用的色卡、
@@ -194,6 +197,7 @@ liquid_keyboard
 │   ├── ci.yml                 # typecheck + test + build
 │   └── deploy.yml             # 构建并部署到 Cloudflare Workers
 ├── fixtures/golden/           # 编译产物 golden 文件
+├── fixtures/trime/            # v3.3.13 官方 schema 与主题 fixture
 ├── public/
 │   ├── _headers               # 静态资源缓存与安全响应头
 │   └── favicon.svg
@@ -210,7 +214,8 @@ liquid_keyboard
 ## 边界
 
 - 不运行 Rime 引擎，不模拟 Android 字体、inset、真实 popup 定位和触感
-- 导入现有主题是近似转换：行分组按宽度推断、颜色映射为语义 token
+- 导入会展开受支持的 `__include` / `__patch` 子集；不支持的 DSL 会进入 import report
+- 未建模字段进入 passthrough；行分组仍按宽度推断，默认不再强制校准
 - 结构化 diff 是只读的，不支持单条 Apply / Revert
 - Liquid `TABS` 子 tab 由运行时决定
 - 拖拽是桌面 HTML5 drag，触屏使用 Row ↑/↓ 或左右移动按钮
@@ -227,6 +232,8 @@ A self-contained authoring tool for [Trime](https://github.com/osfans/trime)
 themes. Compose typed presets (color cards, keyboard layouts, macros), add
 phone / fold / tablet device profiles and schema bindings, then compile each
 device into a single `trime.yaml` plus a deterministic `manifest.json`.
-Projects are stored as self-contained v2 bundles (only the presets actually
-used) and can be exported/imported as JSON. Everything runs in the browser;
-deploy as static assets on Cloudflare Workers with `npm run deploy`.
+Import supports multi-file `__include` / `__patch` themes, keeps unmodelled
+fields in `passthrough`, and reports mapped / passthrough / review / dropped
+entries. Projects are stored as self-contained v2 bundles (only the presets
+actually used) and can be exported/imported as JSON. Everything runs in the
+browser; deploy as static assets on Cloudflare Workers with `npm run deploy`.

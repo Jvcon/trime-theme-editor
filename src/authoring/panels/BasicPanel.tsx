@@ -20,7 +20,7 @@ type Props = {
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
   onImportBundle: (file: File) => void;
-  onImportYaml: (file: File) => void;
+  onImportYaml: (files: File[]) => void;
   onExportBundle: () => void;
   snapshots: Snapshot[];
   onSnapshot: (label: string) => void;
@@ -247,14 +247,14 @@ export function BasicPanel({ project, projects, libs, dirty, mutate, onSave, onN
             <Button size="sm" variant="outline" onClick={onExportBundle}><Download />Export bundle</Button>
             <label className="inline-flex h-8 cursor-pointer items-center gap-1 rounded border border-border px-2 text-xs hover:bg-muted">
               <Upload className="size-3" /> Import trime.yaml
-              <input type="file" accept=".yaml,.yml,text/yaml" hidden onChange={(event) => {
-                const file = event.target.files?.[0];
+              <input type="file" accept=".yaml,.yml,text/yaml" multiple hidden onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
                 event.target.value = "";
-                if (file) onImportYaml(file);
+                if (files.length > 0) onImportYaml(files);
               }} />
             </label>
           </div>
-          <p className="mt-2 text-[10px] text-muted-foreground">v2 bundle 只包含当前项目实际使用的色卡、布局和宏，可直接入库、diff、复现。也可以导入一份现有 trime.yaml，把 preset_keyboards / preset_keys / preset_color_schemes 转成可编辑项目。</p>
+          <p className="mt-2 text-[10px] text-muted-foreground">v2 bundle 只包含当前项目实际使用的色卡、布局和宏，可直接入库、diff、复现。导入 trime.yaml 时可多选主文件与 `__include` 引用到的文件；展开后会生成 import report。</p>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4 xl:col-span-2">

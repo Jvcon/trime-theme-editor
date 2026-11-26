@@ -334,7 +334,10 @@ export function newLayout(name: string): LayoutPreset {
 }
 
 export function cloneMacro(macro: MacroPreset, name: string): MacroPreset {
-  return { ...structuredClone(macro), id: `custom-${macro.id}-${Date.now()}`, name, builtin: false, version: 1 };
+  const copy = { ...structuredClone(macro), id: `custom-${macro.id}-${Date.now()}`, name, builtin: false, version: 1 };
+  // A duplicated imported macro must not keep the original preset token.
+  delete copy.token;
+  return copy;
 }
 
 export function newMacro(name: string): MacroPreset {

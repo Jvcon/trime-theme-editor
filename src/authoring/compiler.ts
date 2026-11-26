@@ -124,6 +124,31 @@ function clean(input: Record<string, unknown>): Record<string, unknown> {
   return output;
 }
 
+function isDict(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Raw passthrough is the base; generated/modelled fields win. Objects merge recursively. */
+function mergeDeep(base: unknown, override: unknown): unknown {
+  if (isDict(base) && isDict(override)) {
+    const output: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(override)) {
+      output[key] = mergeDeep(base[key], value);
+    }
+    return output;
+  }
+  return override === undefined ? base : override;
+}
+
+function mergeScheme(raw: Record<string, unknown>, generated: Record<string, unknown>): Record<string, unknown> {
+  const merged = mergeDeep(raw, generated) as Record<string, unknown>;
+  // Preserve the source scheme's identity fields while generated colors win.
+  for (const key of ["name", "author"] as const) {
+    if (typeof raw[key] === "string") merged[key] = raw[key];
+  }
+  return merged;
+}
+
 function compileToolbarButton(button: ToolbarButton): Record<string, unknown> {
   const background = button.background ? clean({
     type: button.background.type,
@@ -137,7 +162,7 @@ function compileToolbarButton(button: ToolbarButton): Record<string, unknown> {
     normal: button.foreground?.normal,
     padding: button.foreground?.padding,
   }) : undefined;
-  return clean({
+  const generated = clean({
     action: button.action,
     long_press_action: button.longPressAction,
     label: button.label,
@@ -145,6 +170,7 @@ function compileToolbarButton(button: ToolbarButton): Record<string, unknown> {
     foreground,
     size: button.size,
   });
+  return mergeDeep(button.passthrough ?? {}, generated) as Record<string, unknown>;
 }
 
 function compileToolbar(config: ChromeConfig["toolbar"]): Record<string, unknown> {
@@ -162,7 +188,7 @@ function compileLiquidTab(tab: LiquidConfig["tabs"][number]): Record<string, unk
   if (tab.type === "SYMBOL" && tab.symbols?.length) {
     output.keys = tab.symbols.map((item) => ({ [item.label]: item.command }));
   }
-  return output;
+  return mergeDeep(tab.passthrough ?? {}, output) as Record<string, unknown>;
 }
 
 function compileLiquid(config: LiquidConfig): Record<string, unknown> {
@@ -234,7 +260,7 @@ export function macroToken(macro: MacroPreset): string {
 }
 
 export function macroId(id: string) {
-  return `macro_${id.replace(/[^A-Za-z0-9_]/g, "_")}`;
+  return id.startsWith("macro_") ? id : `macro_${id.replace(/[^A-Za-z0-9_]/g, "_")}`;
 }
 
 function pageAction(id: string) {
@@ -254,12 +280,12 @@ function mergeMetrics(base: ProjectMetrics | undefined, override: Partial<Projec
   return output;
 }
 
-function actionToken(action: ActionRef | undefined): string | undefined {
+function actionToken(action: ActionRef | undefined, macroKeyOf: (id: string) => string): string | undefined {
   if (!action) return undefined;
   if (action.kind === "char") return action.value;
   if (action.kind === "text") return action.value;
   if (action.kind === "key") return action.value;
-  if (action.kind === "macro") return macroId(action.id);
+  if (action.kind === "macro") return macroKeyOf(action.id);
   if (action.kind === "page") return pageAction(action.id);
   if (action.kind === "toggle") return `toggle_${action.value}`;
   if (action.kind === "command") return `command_${action.value}`;
@@ -273,15 +299,16 @@ function compileKey(
   first: boolean,
   variant: ThemeCardPreset["variants"][Variant],
   keyStyles: Record<string, KeyStyle>,
+  macroKeyOf: (id: string) => string,
 ) {
-  const key: Record<string, unknown> = {};
+  const key: Record<string, unknown> = { ...(slot.passthrough ?? {}) };
   if (slot.click) {
-    const token = actionToken(slot.click);
+    const token = actionToken(slot.click, macroKeyOf);
     if (token !== undefined && token !== "") key.click = token;
     else if (slot.click.kind === "text") key.click = slot.click.value;
   }
   for (const behavior of ["long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right"] as const) {
-    const token = actionToken(slot[behavior]);
+    const token = actionToken(slot[behavior], macroKeyOf);
     if (token) key[behavior] = token;
   }
   if (slot.label !== undefined) key.label = slot.label;
@@ -305,26 +332,43 @@ function compileKey(
       key.hilited_key_border_color = resolved.hilitedBorder;
     }
   }
+  for (const field of KEY_COLOR_FIELDS) {
+    const value = slot[field];
+    if (value) key[field] = value;
+  }
   return key;
 }
+
+const KEY_COLOR_FIELDS = [
+  "key_back_color",
+  "key_text_color",
+  "key_symbol_color",
+  "key_border_color",
+  "hilited_key_back_color",
+  "hilited_key_text_color",
+  "hilited_key_symbol_color",
+  "hilited_key_border_color",
+] as const;
 
 function compileLayout(
   layout: LayoutPreset,
   variant: ThemeCardPreset["variants"][Variant],
   keyStyles: Record<string, KeyStyle>,
+  macroKeyOf: (id: string) => string,
 ) {
   const keys: Record<string, unknown>[] = [];
   for (const row of layout.rows) {
     row.keys.forEach((slot, index) => {
       if (slot.click?.kind === "text" && slot.click.value === "") {
-        keys.push({ width: Number((slot.width ?? 10).toFixed(3)) });
+        keys.push({ ...(slot.passthrough ?? {}), width: Number((slot.width ?? 10).toFixed(3)) });
         return;
       }
-      keys.push(compileKey(slot, row.height, index === 0, variant, keyStyles));
+      keys.push(compileKey(slot, row.height, index === 0, variant, keyStyles, macroKeyOf));
     });
   }
   const firstHeight = layout.rows[0]?.height;
-  return { name: layout.name, ascii_mode: 0, ...(firstHeight ? { height: firstHeight } : {}), keys };
+  const generated = { name: layout.name, ascii_mode: layout.asciiMode ?? 0, ...(firstHeight ? { height: firstHeight } : {}), keys };
+  return mergeDeep(layout.passthrough ?? {}, generated) as Record<string, unknown>;
 }
 
 /**
@@ -364,10 +408,17 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   // silently resolved from the built-in catalog.
   const allMacros = bundle.macros;
 
+  const passthrough = isDict(bundle.passthrough) ? bundle.passthrough : {};
+  const rawMacros = isDict(passthrough.macros) ? passthrough.macros : {};
+  const macroKeys = new Map(allMacros.map((item) => [item.id, item.token ?? macroId(item.id)]));
+  const macroKeyOf = (id: string) => macroKeys.get(id) ?? macroId(id);
   const presetKeys: Record<string, unknown> = {};
   for (const item of allMacros) {
     const token = macroToken(item);
-    if (token) presetKeys[macroId(item.id)] = { text: token };
+    if (token) {
+      const raw = isDict(rawMacros[item.id]) ? rawMacros[item.id] : {};
+      presetKeys[macroKeyOf(item.id)] = mergeDeep(raw, { text: token });
+    }
   }
   for (const item of layouts) {
     presetKeys[pageAction(item.id)] = { label: item.name, send: "Eisu_toggle", select: item.id };
@@ -376,7 +427,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   presetKeys.Keyboard_default = { label: "返回", send: "Eisu_toggle", select: `.default` };
 
   const presetKeyboards: Record<string, unknown> = {};
-  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, variant, bundle.keyStyles);
+  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, variant, bundle.keyStyles, macroKeyOf);
   if (layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
   // Schema bindings emit alias keyboards that import an existing keyset.
@@ -392,6 +443,12 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   const firstRowHeight = layout.rows[0]?.height ?? 52;
   const metrics = mergeMetrics(bundle.metrics, device?.metrics);
   const chrome = normalizeChrome(bundle.chrome);
+  const rawKeyboards = isDict(passthrough.preset_keyboards) ? passthrough.preset_keyboards : {};
+  for (const [id, raw] of Object.entries(rawKeyboards)) {
+    if (!isDict(raw) || Object.prototype.hasOwnProperty.call(presetKeyboards, id)) continue;
+    presetKeyboards[id] = structuredClone(raw);
+    aliases.push(id);
+  }
   for (const [name, value] of Object.entries(liquidPresetKeys(chrome.liquid))) {
     if (!presetKeys[name]) presetKeys[name] = value;
   }
@@ -400,11 +457,37 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
     presetKeys[name] = value;
   }
 
-  return stringifyTrime({
+  const rawTop = isDict(passthrough.top) ? passthrough.top : {};
+  const rawStyle = isDict(passthrough.style) ? passthrough.style : {};
+  const rawWindow = isDict(passthrough.window) ? passthrough.window : {};
+  const rawPreedit = isDict(passthrough.preedit) ? passthrough.preedit : {};
+  const rawToolbar = isDict(passthrough.tool_bar) ? passthrough.tool_bar : {};
+  const rawLiquid = isDict(passthrough.liquid_keyboard) ? passthrough.liquid_keyboard : {};
+  const rawSchemes = isDict(passthrough.preset_color_schemes) ? passthrough.preset_color_schemes : {};
+  const rawLight = isDict(rawSchemes.light) ? rawSchemes.light : {};
+  const rawDark = isDict(rawSchemes.dark) ? rawSchemes.dark : {};
+  const extraSchemes: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(rawSchemes)) {
+    if (name === "light" || name === "dark") continue;
+    if (isDict(value)) extraSchemes[name] = structuredClone(value);
+  }
+  const fallbackColors = bundle.fallbackColors && Object.keys(bundle.fallbackColors).length > 0
+    ? bundle.fallbackColors
+    : {
+      candidate_text_color: "text_color",
+      comment_text_color: "candidate_text_color",
+      border_color: "back_color",
+      key_back_color: "back_color",
+      key_border_color: "border_color",
+      key_text_color: "candidate_text_color",
+      key_symbol_color: "comment_text_color",
+    };
+
+  const generated = {
     config_version: bundle.meta.configVersion || "3.0",
     name: bundle.meta.name,
     author: bundle.meta.author,
-    style: {
+    style: mergeDeep(rawStyle, {
       key_width: metrics.keyWidth ?? 10,
       key_height: metrics.keyHeight ?? firstRowHeight,
       horizontal_gap: metrics.horizontalGap ?? 2,
@@ -421,27 +504,21 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
       popup_text_size: metrics.popupTextSize ?? 22,
       popup_bottom_margin: metrics.popupBottomMargin ?? 8,
       keyboards: [...new Set([...layouts.map((item) => item.id), ...aliases, "default"])],
-    },
-    window: compileWindow(chrome.window),
-    preedit: compilePreedit(chrome.preedit),
-    tool_bar: compileToolbar(chrome.toolbar),
-    fallback_colors: {
-      candidate_text_color: "text_color",
-      comment_text_color: "candidate_text_color",
-      border_color: "back_color",
-      key_back_color: "back_color",
-      key_border_color: "border_color",
-      key_text_color: "candidate_text_color",
-      key_symbol_color: "comment_text_color",
-    },
+    }),
+    window: mergeDeep(rawWindow, compileWindow(chrome.window)),
+    preedit: mergeDeep(rawPreedit, compilePreedit(chrome.preedit)),
+    tool_bar: mergeDeep(rawToolbar, compileToolbar(chrome.toolbar)),
+    fallback_colors: fallbackColors,
     preset_color_schemes: {
-      light: buildScheme(card, "light", bundle.keyStyles),
-      dark: { ...buildScheme(card, "dark", bundle.keyStyles), light_scheme: "light" },
+      ...extraSchemes,
+      light: mergeScheme(rawLight, buildScheme(card, "light", bundle.keyStyles)),
+      dark: mergeScheme(rawDark, { ...buildScheme(card, "dark", bundle.keyStyles), light_scheme: "light" }),
     },
     preset_keys: presetKeys,
     preset_keyboards: presetKeyboards,
-    liquid_keyboard: compileLiquid(chrome.liquid),
-  });
+    liquid_keyboard: mergeDeep(rawLiquid, compileLiquid(chrome.liquid)),
+  };
+  return stringifyTrime({ ...rawTop, ...generated });
 }
 
 function embeddedPreset<T extends { id: string }>(items: T[], id: string): T {

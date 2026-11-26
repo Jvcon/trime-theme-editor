@@ -8,14 +8,22 @@ import type { ProjectBundle } from "./types";
 type Props = {
   source: string;
   fileName: string;
+  resources?: Record<string, string>;
   onApply: (project: ProjectBundle, warnings: string[]) => void;
   onCancel: () => void;
 };
 
-export function ImportDialog({ source, fileName, onApply, onCancel }: Props) {
-  const [options, setOptions] = useState<ImportOptions>({ themeCard: true, interface: true, keyboards: "all" });
-  const preview = useMemo(() => importTrimeYaml(source, fileName, options), [source, fileName, options]);
-  const allLayouts = useMemo(() => importTrimeYaml(source, fileName, { ...options, keyboards: "all" }).project.layouts.length, [source, fileName, options]);
+const REPORT_SECTIONS = [
+  ["mapped", "Mapped", "success"],
+  ["passthrough", "Passthrough", "muted"],
+  ["needsReview", "Needs review", "warning"],
+  ["dropped", "Dropped", "danger"],
+] as const;
+
+export function ImportDialog({ source, fileName, resources, onApply, onCancel }: Props) {
+  const [options, setOptions] = useState<ImportOptions>({ themeCard: true, interface: true, keyboards: "all", calibrateRows: false });
+  const preview = useMemo(() => importTrimeYaml(source, fileName, options, resources), [source, fileName, options, resources]);
+  const allLayouts = useMemo(() => importTrimeYaml(source, fileName, { ...options, keyboards: "all" }, resources).project.layouts.length, [source, fileName, options, resources]);
   const project = preview.project;
   const layouts = project.layouts.length;
   const macros = project.macros.length;
@@ -28,7 +36,7 @@ export function ImportDialog({ source, fileName, onApply, onCancel }: Props) {
           <Upload className="size-4" />
           <div className="leading-tight">
             <div className="text-sm font-semibold">Import trime.yaml</div>
-            <div className="text-[10px] text-muted-foreground">{fileName}</div>
+            <div className="text-[10px] text-muted-foreground">{fileName}{resources && Object.keys(resources).length > 0 ? ` + ${Object.keys(resources).length} resources` : ""}</div>
           </div>
           <Button size="icon" variant="ghost" className="ml-auto" onClick={onCancel}><X /></Button>
         </header>
@@ -100,17 +108,29 @@ export function ImportDialog({ source, fileName, onApply, onCancel }: Props) {
             </p>
           </section>
 
-          {preview.warnings.length > 0 ? (
-            <section className="space-y-1">
-              <h3 className="flex items-center gap-1 text-xs font-semibold"><AlertTriangle className="size-3 text-amber-300" /> Notes</h3>
-              {preview.warnings.map((warning, index) => (
-                <div key={index} className="flex items-start gap-2 rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1 text-[10px] text-amber-100">
-                  <span className="mt-0.5">•</span>
-                  <span className="whitespace-pre-wrap break-words">{warning}</span>
-                </div>
-              ))}
-            </section>
-          ) : null}
+          {REPORT_SECTIONS.map(([key, label, variant]) => {
+            const entries = preview.report[key];
+            if (entries.length === 0) return null;
+            const tone = key === "needsReview"
+              ? "border-amber-500/20 bg-amber-500/5 text-amber-100"
+              : key === "dropped"
+                ? "border-red-500/20 bg-red-500/5 text-red-100"
+                : "border-border bg-muted/10 text-muted-foreground";
+            return (
+              <section key={key} className="space-y-1">
+                <h3 className="flex items-center gap-1 text-xs font-semibold">
+                  {key === "needsReview" ? <AlertTriangle className="size-3 text-amber-300" /> : null}
+                  <Badge variant={variant}>{label} · {entries.length}</Badge>
+                </h3>
+                {entries.map((entry, index) => (
+                  <div key={index} className={`flex items-start gap-2 rounded border px-2 py-1 text-[10px] ${tone}`}>
+                    <span className="mt-0.5">•</span>
+                    <span className="whitespace-pre-wrap break-words">{entry}</span>
+                  </div>
+                ))}
+              </section>
+            );
+          })}
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">

@@ -35,7 +35,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [pendingImport, setPendingImport] = useState<{ source: string; fileName: string } | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ source: string; fileName: string; resources: Record<string, string> } | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
 
   const libs = useMemo(() => libraries(project), [project]);
@@ -269,9 +269,15 @@ export function AuthoringApp({ open = true, onClose }: Props) {
     }
   };
 
-  const pickImportYaml = async (file: File) => {
+  const pickImportYaml = async (files: File[]) => {
     try {
-      setPendingImport({ source: await file.text(), fileName: file.name });
+      const entries = await Promise.all(files.map(async (file) => [file.name, await file.text()] as const));
+      if (entries.length === 0) return;
+      const preferred = entries.findIndex(([name]) => /(^|\/)trime\.ya?ml$/i.test(name));
+      const mainIndex = preferred >= 0 ? preferred : 0;
+      const [fileName, source] = entries[mainIndex];
+      const resources = Object.fromEntries(entries.filter((_, index) => index !== mainIndex));
+      setPendingImport({ source, fileName, resources });
     } catch (error) {
       setMessage(`读取 YAML 失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -346,7 +352,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
             onOpen={(id) => void openProject(id)}
             onDelete={(id) => void removeProject(id)}
             onImportBundle={(file) => void importBundle(file)}
-            onImportYaml={(file) => void pickImportYaml(file)}
+            onImportYaml={(files) => void pickImportYaml(files)}
             onExportBundle={exportBundle}
             snapshots={snapshots}
             onSnapshot={(label) => void takeSnapshot(label)}
@@ -378,6 +384,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
         <ImportDialog
           source={pendingImport.source}
           fileName={pendingImport.fileName}
+          resources={pendingImport.resources}
           onApply={applyImport}
           onCancel={() => setPendingImport(null)}
         />

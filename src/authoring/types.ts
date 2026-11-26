@@ -35,6 +35,8 @@ export type MacroPreset = {
   version: number;
   builtin: boolean;
   steps: MacroStep[];
+  /** Original preset_keys token, preserving imported command names. */
+  token?: string;
 };
 
 export type ActionRef =
@@ -63,6 +65,16 @@ export type KeySlot = {
   swipe_left?: ActionRef;
   swipe_right?: ActionRef;
   popup?: string[];
+  key_back_color?: string;
+  key_text_color?: string;
+  key_symbol_color?: string;
+  key_border_color?: string;
+  hilited_key_back_color?: string;
+  hilited_key_text_color?: string;
+  hilited_key_symbol_color?: string;
+  hilited_key_border_color?: string;
+  /** Unmodelled key fields preserved verbatim. */
+  passthrough?: Record<string, unknown>;
 };
 
 export type LayoutRow = {
@@ -77,7 +89,10 @@ export type LayoutPreset = {
   version: number;
   builtin: boolean;
   pageRole: "main" | "number" | "symbols";
+  asciiMode?: number;
   rows: LayoutRow[];
+  /** Unmodelled keyboard fields preserved verbatim. */
+  passthrough?: Record<string, unknown>;
 };
 
 export type ProjectMeta = {
@@ -143,6 +158,8 @@ export type ToolbarButton = {
     normal?: string;
     padding?: number;
   };
+  /** Unmodelled button fields (including nested background/foreground) preserved verbatim. */
+  passthrough?: Record<string, unknown>;
 };
 
 export type ToolbarConfig = {
@@ -160,6 +177,8 @@ export type LiquidTab = {
   type: LiquidTabType;
   keys?: string[];
   symbols?: Array<{ label: string; command: string }>;
+  /** Unmodelled tab fields preserved verbatim. */
+  passthrough?: Record<string, unknown>;
 };
 
 export type LiquidConfig = {
@@ -238,9 +257,14 @@ export type ProjectBundle = {
   macros: MacroPreset[];
   metrics?: ProjectMetrics;
   chrome?: ChromeConfig;
+  fallbackColors?: Record<string, string>;
   /** Imported preset_keys that cannot be represented as a macro (commands/selects). */
   customPresetKeys?: Record<string, Record<string, unknown>>;
-  /** Unmodelled Trime fields preserved verbatim. */
+  /**
+   * Unmodelled Trime fields preserved verbatim, grouped by section:
+   * top, style, window, preedit, tool_bar, liquid_keyboard,
+   * preset_color_schemes, preset_keyboards.
+   */
   passthrough?: Record<string, unknown>;
 };
 

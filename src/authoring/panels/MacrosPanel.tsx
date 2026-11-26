@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { macroToken } from "../compiler";
+import { macroId, macroToken } from "../compiler";
 import { KEYCODES } from "../catalogs";
 import type { MacroPreset, PresetLibraries, ProjectBundle } from "../types";
 import { cloneMacro, newMacro } from "../utils";
@@ -21,6 +21,7 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
   const [selectedId, setSelectedId] = useState(libs.macros[0]?.id ?? "");
   const macro = libs.macros.find((item) => item.id === selectedId) ?? libs.macros[0];
   const included = macro ? project.macros.some((item) => item.id === macro.id) : false;
+  const outputKey = macro ? macro.token ?? macroId(macro.id) : "";
 
   const edit = (fn: (macro: MacroPreset) => void) => {
     if (!macro || macro.builtin) return;
@@ -172,7 +173,7 @@ export function MacrosPanel({ project, libs, mutate, setMessage }: Props) {
 
             <section className="rounded-xl border border-border bg-card p-4">
               <h3 className="mb-2 text-xs font-semibold">Compiled preset key</h3>
-              <pre className="overflow-auto rounded bg-muted/30 p-2 text-[10px]">{`preset_keys:\n  macro_${macro.id.replace(/[^A-Za-z0-9_]/g, "_")}:\n    text: ${JSON.stringify(macroToken(macro))}`}</pre>
+              <pre className="overflow-auto rounded bg-muted/30 p-2 text-[10px]">{`preset_keys:\n  ${outputKey}:\n    text: ${JSON.stringify(macroToken(macro))}`}</pre>
             </section>
           </div>
         ) : <p className="text-xs text-muted-foreground">没有宏。</p>}

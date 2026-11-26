@@ -1,15 +1,24 @@
 import YAML from "yaml";
 import { defaultBundle } from "./compiler";
 import { KEYCODES } from "./catalogs";
+import { expandThemeDsl, ThemeDslError } from "./dsl";
 import { BUILTIN_PRESETS } from "./presets";
 import type { ActionRef, ChromePatch, KeySlot, LayoutPreset, LayoutRow, LiquidConfig, LiquidTab, MacroPreset, MacroStep, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, ToolbarConfig, Variant, WindowConfig } from "./types";
 import { defaultKeyStyles, fitLayoutRows, normalizeChrome, slug } from "./utils";
 
 type Dict = Record<string, unknown>;
 
+export type ImportReport = {
+  mapped: string[];
+  passthrough: string[];
+  needsReview: string[];
+  dropped: string[];
+};
+
 export type ImportResult = {
   project: ProjectBundle;
   warnings: string[];
+  report: ImportReport;
 };
 
 export type ImportOptions = {
@@ -18,6 +27,40 @@ export type ImportOptions = {
   keyboards?: "all" | "main";
   calibrateRows?: boolean;
 };
+
+const TOP_LEVEL_KEYS = new Set([
+  "config_version", "name", "author", "style", "preedit", "window", "tool_bar",
+  "fallback_colors", "preset_color_schemes", "liquid_keyboard", "preset_keys",
+  "preset_keyboards", "base",
+]);
+
+const STYLE_KEYS = new Set([
+  "key_width", "key_height", "horizontal_gap", "vertical_gap", "keyboard_height",
+  "candidate_view_height", "candidate_text_size", "comment_text_size", "key_text_size",
+  "popup_width", "popup_height", "popup_key_height", "popup_text_size",
+  "popup_bottom_margin", "keyboard_padding_left", "keyboard_padding",
+]);
+
+const KEY_KNOWN_FIELDS = new Set([
+  "click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right",
+  "popup", "label", "label_symbol", "hint", "width", "height",
+  "key_back_color", "key_text_color", "key_symbol_color", "key_border_color",
+  "hilited_key_back_color", "hilited_key_text_color", "hilited_key_symbol_color", "hilited_key_border_color",
+]);
+
+const LAYOUT_KNOWN_FIELDS = new Set(["keys", "name", "height", "ascii_mode"]);
+
+function pickUnknown(source: Dict, known: Set<string>): Dict {
+  const output: Dict = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!known.has(key)) output[key] = value;
+  }
+  return output;
+}
+
+function withPassthrough<T extends object>(value: T, passthrough: Dict): T & { passthrough?: Dict } {
+  return Object.keys(passthrough).length > 0 ? { ...value, passthrough } : value;
+}
 
 const KEYCODE_SET = new Set(KEYCODES.flatMap((group) => group.items));
 const FALLBACK = {
@@ -79,15 +122,18 @@ function variantOf(scheme: Dict): ThemeCardPreset["variants"][Variant] {
   };
 }
 
-function buildCard(doc: Dict, warnings: string[]): ThemeCardPreset | undefined {
+function buildCard(doc: Dict, report: ImportReport): ThemeCardPreset | undefined {
   const schemes = asDict(doc.preset_color_schemes);
   const names = Object.keys(schemes);
   if (names.length === 0) {
-    warnings.push("没有 preset_color_schemes，保留默认色卡。");
+    report.needsReview.push("没有 preset_color_schemes，保留默认色卡。");
     return undefined;
   }
   const lightName = names.includes("light") ? "light" : names[0];
   const darkName = names.includes("dark") ? "dark" : names.find((name) => name !== lightName) ?? lightName;
+  if (!names.includes("light") || !names.includes("dark")) {
+    report.needsReview.push(`preset_color_schemes 使用非 light/dark 名称（${names.join(", ")}），已映射为 light/dark；原始 scheme 保留在 passthrough。`);
+  }
   return {
     kind: "theme-card",
     id: `imported-card-${slug(text(doc.name) || "theme")}`,
@@ -115,29 +161,31 @@ function macroStepsOf(value: string): MacroStep[] {
   return steps.length > 0 ? steps : [{ type: "text", value }];
 }
 
-function importMacros(doc: Dict, warnings: string[]): {
+function importMacros(doc: Dict, report: ImportReport): {
   macros: MacroPreset[];
   byToken: Map<string, string>;
   rawPresetKeys: Record<string, Record<string, unknown>>;
+  macroPassthrough: Record<string, Record<string, unknown>>;
   rawTokens: Set<string>;
 } {
   const presetKeys = asDict(doc.preset_keys);
   const macros: MacroPreset[] = [];
   const rawPresetKeys: Record<string, Record<string, unknown>> = {};
+  const macroPassthrough: Record<string, Record<string, unknown>> = {};
   const rawTokens = new Set<string>();
   const byToken = new Map<string, string>();
   const taken = new Set(BUILTIN_PRESETS.macros.map((item) => item.id));
   for (const [token, value] of Object.entries(presetKeys)) {
     const entry = asDict(value);
     if (Object.keys(entry).length === 0) continue;
-    rawPresetKeys[token] = entry;
-    if (entry.select !== undefined || entry.command !== undefined) {
-      rawTokens.add(token);
-      continue;
-    }
+    const isCommand = entry.select !== undefined || entry.command !== undefined;
     const send = text(entry.send);
     const body = text(entry.text);
-    if (!send && !body) continue;
+    if (isCommand || (!send && !body)) {
+      rawPresetKeys[token] = entry;
+      if (isCommand) rawTokens.add(token);
+      continue;
+    }
     let id = token.replace(/[^A-Za-z0-9_]/g, "_") || "macro";
     if (taken.has(id)) {
       let index = 2;
@@ -156,12 +204,20 @@ function importMacros(doc: Dict, warnings: string[]): {
       version: 1,
       builtin: false,
       steps,
+      token,
     });
+    const extra = { ...entry };
+    delete extra.send;
+    delete extra.text;
+    delete extra.label;
+    if (Object.keys(extra).length > 0) macroPassthrough[id] = extra;
     byToken.set(token, id);
   }
-  if (macros.length > 0) warnings.push(`已导入 ${macros.length} 个 preset_keys 为宏；label/send/text 已转换。`);
-  if (rawTokens.size > 0) warnings.push(`已保留 ${rawTokens.size} 个 command/select 型 preset_keys（宏无法表达）。`);
-  return { macros, byToken, rawPresetKeys, rawTokens };
+  if (macros.length > 0) report.mapped.push(`已把 ${macros.length} 个 preset_keys 转为宏；label/send/text 已转换。`);
+  if (Object.keys(rawPresetKeys).length > 0) {
+    report.passthrough.push(`已保留 ${Object.keys(rawPresetKeys).length} 个原始 preset_keys（command/select/未建模；其中 ${rawTokens.size} 个 command/select）。`);
+  }
+  return { macros, byToken, rawPresetKeys, macroPassthrough, rawTokens };
 }
 
 function importAction(raw: unknown, ctx: { byToken: Map<string, string>; rawTokens: Set<string>; layoutIds: Map<string, string>; defaultId: string; warnings: string[] }): ActionRef | undefined {
@@ -198,6 +254,7 @@ function convertKeyboard(
       used = 0;
     }
     const click = importAction(source.click, ctx);
+    const passthrough = pickUnknown(source, KEY_KNOWN_FIELDS);
     const slot: KeySlot = {
       style: click ? "default" : "off",
       width,
@@ -212,6 +269,15 @@ function convertKeyboard(
       ...(importAction(source.swipe_left, ctx) ? { swipe_left: importAction(source.swipe_left, ctx) } : {}),
       ...(importAction(source.swipe_right, ctx) ? { swipe_right: importAction(source.swipe_right, ctx) } : {}),
       ...(Array.isArray(source.popup) ? { popup: source.popup.map(text).filter(Boolean) } : {}),
+      ...(text(source.key_back_color) ? { key_back_color: text(source.key_back_color) } : {}),
+      ...(text(source.key_text_color) ? { key_text_color: text(source.key_text_color) } : {}),
+      ...(text(source.key_symbol_color) ? { key_symbol_color: text(source.key_symbol_color) } : {}),
+      ...(text(source.key_border_color) ? { key_border_color: text(source.key_border_color) } : {}),
+      ...(text(source.hilited_key_back_color) ? { hilited_key_back_color: text(source.hilited_key_back_color) } : {}),
+      ...(text(source.hilited_key_text_color) ? { hilited_key_text_color: text(source.hilited_key_text_color) } : {}),
+      ...(text(source.hilited_key_symbol_color) ? { hilited_key_symbol_color: text(source.hilited_key_symbol_color) } : {}),
+      ...(text(source.hilited_key_border_color) ? { hilited_key_border_color: text(source.hilited_key_border_color) } : {}),
+      ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
     };
     if (number(source.height)) slot.height = number(source.height);
     row.keys.push(slot);
@@ -222,6 +288,7 @@ function convertKeyboard(
 
   const name = text(entry.name) || id;
   const role = /number|num|123|digit/i.test(id) ? "number" : /symbol|punct|emoji/i.test(id) ? "symbols" : "number";
+  const passthrough = pickUnknown(entry, LAYOUT_KNOWN_FIELDS);
   return {
     kind: "layout",
     id,
@@ -229,7 +296,9 @@ function convertKeyboard(
     version: 1,
     builtin: false,
     pageRole: role as LayoutPreset["pageRole"],
+    asciiMode: number(entry.ascii_mode) ?? 0,
     rows,
+    ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
   };
 }
 
@@ -244,6 +313,11 @@ function importToolbarButton(value: unknown): ToolbarButton | undefined {
   const size: [number, number] | undefined = rawSize.length >= 2
     ? [number(rawSize[0]) ?? 44, number(rawSize[1]) ?? 44]
     : undefined;
+  const passthrough = { ...source };
+  delete passthrough.action;
+  delete passthrough.long_press_action;
+  delete passthrough.label;
+  delete passthrough.size;
   return {
     action,
     ...(text(source.long_press_action) ? { longPressAction: text(source.long_press_action) } : {}),
@@ -266,16 +340,21 @@ function importToolbarButton(value: unknown): ToolbarButton | undefined {
         ...(number(foreground.padding) !== undefined ? { padding: number(foreground.padding) } : {}),
       },
     } : {}),
+    ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
   };
 }
 
-function importToolbar(value: unknown): ToolbarConfig | undefined {
+function importToolbar(value: unknown, report?: ImportReport): ToolbarConfig | undefined {
   const source = asDict(value);
   if (Object.keys(source).length === 0) return undefined;
   const primary = importToolbarButton(source.primary_button);
-  const buttons = Array.isArray(source.buttons)
-    ? source.buttons.map(importToolbarButton).filter((item): item is ToolbarButton => Boolean(item))
-    : [];
+  const rawButtons = Array.isArray(source.buttons) ? source.buttons : [];
+  const buttons = rawButtons
+    .map(importToolbarButton)
+    .filter((item): item is ToolbarButton => Boolean(item));
+  if (report && rawButtons.length !== buttons.length) {
+    report.dropped.push(`tool_bar 中 ${rawButtons.length - buttons.length} 个按钮缺少 action，未导入。`);
+  }
   return {
     buttonSpacing: number(source.button_spacing) ?? 6,
     backStyle: text(source.back_style) || "ic@arrow-left",
@@ -292,6 +371,7 @@ function importLiquidTab(id: string, value: unknown): LiquidTab | undefined {
     ? type as LiquidTab["type"]
     : "SINGLE";
   const rawKeys = source.keys;
+  const passthrough = pickUnknown(source, new Set(["type", "name", "keys"]));
   if (normalizedType === "SYMBOL") {
     const symbols = Array.isArray(rawKeys)
       ? rawKeys.map((item) => {
@@ -300,7 +380,7 @@ function importLiquidTab(id: string, value: unknown): LiquidTab | undefined {
         return { label: String(label ?? ""), command: String(command ?? "") };
       }).filter((item) => item.label)
       : [];
-    return { id, name: text(source.name) || id, type: normalizedType, symbols };
+    return withPassthrough({ id, name: text(source.name) || id, type: normalizedType, symbols }, passthrough);
   }
   const keys = typeof rawKeys === "string"
     ? Array.from(rawKeys)
@@ -312,7 +392,7 @@ function importLiquidTab(id: string, value: unknown): LiquidTab | undefined {
         return String(label ?? command ?? "");
       }).filter(Boolean)
       : undefined;
-  return { id, name: text(source.name) || id, type: normalizedType, ...(keys ? { keys } : {}) };
+  return withPassthrough({ id, name: text(source.name) || id, type: normalizedType, ...(keys ? { keys } : {}) }, passthrough);
 }
 
 function importLiquid(value: unknown): LiquidConfig | undefined {
@@ -374,12 +454,16 @@ function importPreedit(value: unknown): Partial<PreeditConfig> | undefined {
   };
 }
 
-function importChrome(doc: Dict): ChromePatch {
+function importChrome(doc: Dict, report?: ImportReport): ChromePatch {
+  const toolbar = importToolbar(doc.tool_bar, report);
+  const liquid = importLiquid(doc.liquid_keyboard);
+  const window = importWindow(doc.window);
+  const preedit = importPreedit(doc.preedit);
   return {
-    ...(importToolbar(doc.tool_bar) ? { toolbar: importToolbar(doc.tool_bar) } : {}),
-    ...(importLiquid(doc.liquid_keyboard) ? { liquid: importLiquid(doc.liquid_keyboard) } : {}),
-    ...(importWindow(doc.window) ? { window: importWindow(doc.window) } : {}),
-    ...(importPreedit(doc.preedit) ? { preedit: importPreedit(doc.preedit) } : {}),
+    ...(toolbar ? { toolbar } : {}),
+    ...(liquid ? { liquid } : {}),
+    ...(window ? { window } : {}),
+    ...(preedit ? { preedit } : {}),
   };
 }
 
@@ -397,26 +481,50 @@ function resolveKeyboard(presetKeyboards: Dict, id: string, seen = new Set<strin
   return { id, entry };
 }
 
-export function importTrimeYaml(source: string, fileName = "trime.yaml", options: ImportOptions = {}): ImportResult {
-  const parsed = YAML.parse(source);
-  const doc = asDict(asDict(parsed).base) && Object.keys(asDict(asDict(parsed).base)).length > 0 ? asDict(asDict(parsed).base) : asDict(parsed);
+export function importTrimeYaml(
+  source: string,
+  fileName = "trime.yaml",
+  options: ImportOptions = {},
+  resources: Record<string, string> = {},
+): ImportResult {
+  const report: ImportReport = { mapped: [], passthrough: [], needsReview: [], dropped: [] };
   const warnings: string[] = [];
+  const resourceDocs: Record<string, unknown> = {};
+  for (const [name, content] of Object.entries(resources)) {
+    try {
+      resourceDocs[name] = YAML.parse(content);
+    } catch (error) {
+      report.needsReview.push(`资源 ${name} 解析失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  let parsed: unknown;
+  try {
+    parsed = expandThemeDsl(YAML.parse(source), fileName, resourceDocs);
+  } catch (error) {
+    const message = error instanceof ThemeDslError ? `${error.kind}: ${error.message}` : String(error);
+    report.needsReview.push(`DSL 展开失败：${message}`);
+    parsed = YAML.parse(source);
+  }
+  const doc = asDict(asDict(parsed).base) && Object.keys(asDict(asDict(parsed).base)).length > 0 ? asDict(asDict(parsed).base) : asDict(parsed);
   const presetKeyboards = asDict(doc.preset_keyboards);
-  const opts = { themeCard: true, interface: true, keyboards: "all" as "all" | "main", calibrateRows: true, ...options };
+  const opts = { themeCard: true, interface: true, keyboards: "all" as "all" | "main", calibrateRows: false, ...options };
 
-  const card = opts.themeCard ? buildCard(doc, warnings) : undefined;
-  const { macros, byToken, rawPresetKeys, rawTokens } = importMacros(doc, warnings);
+  const card = opts.themeCard ? buildCard(doc, report) : undefined;
+  if (!opts.themeCard) report.dropped.push("preset_color_schemes（未启用 themeCard 导入）");
+  const { macros, byToken, rawPresetKeys, macroPassthrough, rawTokens } = importMacros(doc, report);
 
   const mainCandidate = resolveKeyboard(presetKeyboards, "default")
     ?? resolveKeyboard(presetKeyboards, "qwerty")
     ?? resolveKeyboard(presetKeyboards, Object.keys(presetKeyboards)[0] ?? "");
   if (!mainCandidate) {
-    warnings.push("没有可用 preset_keyboards，导入为空项目。");
+    const message = "没有可用 preset_keyboards，导入为空项目。";
+    warnings.push(message);
+    report.needsReview.push(message);
     const empty = defaultBundle();
     empty.id = `imported-${slug(fileName.replace(/\.ya?ml$/i, ""))}`;
     empty.meta.name = text(doc.name) || fileName.replace(/\.ya?ml$/i, "");
     empty.meta.author = text(doc.author) || empty.meta.author;
-    return { project: empty, warnings };
+    return { project: empty, warnings, report };
   }
 
   const takenLayoutIds = new Set(BUILTIN_PRESETS.layouts.map((item) => item.id));
@@ -468,10 +576,14 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
   const importedLayouts = opts.keyboards === "main" ? [mainLayout] : layouts;
   if (opts.calibrateRows) {
     for (const layout of importedLayouts) fitLayoutRows(layout);
-    warnings.push("已把每行宽度校准到 100%；可在 Layouts → Reflow 重新分行。");
+    const message = "已把每行宽度校准到 100%；可在 Layouts → Reflow 重新分行。";
+    warnings.push(message);
+    report.mapped.push(message);
   }
   if (opts.keyboards === "main" && layouts.length > 1) {
-    warnings.push(`仅导入主键盘；${layouts.length - 1} 个页面布局未导入，页面跳转引用可能悬空。`);
+    const message = `仅导入主键盘；${layouts.length - 1} 个页面布局未导入，页面跳转引用可能悬空。`;
+    warnings.push(message);
+    report.dropped.push(message);
   }
   const pageIds = importedLayouts.filter((item) => item.id !== mainLayout.id).map((item) => item.id);
   const project = defaultBundle();
@@ -494,7 +606,7 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
     project.variant = hasDark ? "dark" : "light";
   }
   if (opts.interface) {
-    project.chrome = normalizeChrome(importChrome(doc));
+    project.chrome = normalizeChrome(importChrome(doc, report));
   }
   const style = asDict(doc.style);
   project.metrics = {
@@ -517,6 +629,55 @@ export function importTrimeYaml(source: string, fileName = "trime.yaml", options
     if (project.metrics[key] === undefined) delete project.metrics[key];
   }
 
-  warnings.unshift(`已导入 ${importedLayouts.length} 个键盘、${macros.length} 个宏${card ? "、1 张色卡" : ""}${opts.interface ? "、界面配置" : ""}。`);
-  return { project, warnings };
+  const passthrough: Record<string, unknown> = {};
+  const topUnknown = pickUnknown(doc, TOP_LEVEL_KEYS);
+  if (Object.keys(topUnknown).length > 0) {
+    passthrough.top = topUnknown;
+    report.passthrough.push(`顶层字段：${Object.keys(topUnknown).join(", ")}`);
+  }
+  const styleUnknown = pickUnknown(style, STYLE_KEYS);
+  if (Object.keys(styleUnknown).length > 0) {
+    passthrough.style = styleUnknown;
+    report.passthrough.push(`style 字段：${Object.keys(styleUnknown).join(", ")}`);
+  }
+  for (const section of ["window", "preedit", "tool_bar", "liquid_keyboard"] as const) {
+    const raw = asDict(doc[section]);
+    if (Object.keys(raw).length > 0) {
+      passthrough[section] = raw;
+      report.passthrough.push(`${section}（原始字段保留）`);
+    }
+  }
+  const schemes = asDict(doc.preset_color_schemes);
+  if (Object.keys(schemes).length > 0) {
+    passthrough.preset_color_schemes = schemes;
+    report.passthrough.push("preset_color_schemes（原始字段保留）");
+  }
+  if (Object.keys(macroPassthrough).length > 0) {
+    passthrough.macros = macroPassthrough;
+    report.passthrough.push(`宏的额外字段：${Object.keys(macroPassthrough).join(", ")}`);
+  }
+  const aliasKeyboards: Dict = {};
+  for (const [id, value] of Object.entries(presetKeyboards)) {
+    const entry = asDict(value);
+    if (text(entry.import_preset)) aliasKeyboards[id] = entry;
+  }
+  if (Object.keys(aliasKeyboards).length > 0) {
+    passthrough.preset_keyboards = aliasKeyboards;
+    report.passthrough.push(`preset_keyboards alias：${Object.keys(aliasKeyboards).join(", ")}`);
+  }
+  project.passthrough = passthrough;
+
+  const fallback = asDict(doc.fallback_colors);
+  const fallbackColors: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fallback)) {
+    if (typeof value === "string") fallbackColors[key] = value;
+  }
+  if (Object.keys(fallbackColors).length > 0) {
+    project.fallbackColors = fallbackColors;
+    report.mapped.push("fallback_colors");
+  }
+
+  const summary = `已导入 ${importedLayouts.length} 个键盘、${macros.length} 个宏${card ? "、1 张色卡" : ""}${opts.interface ? "、界面配置" : ""}。`;
+  report.mapped.unshift(summary);
+  return { project, warnings, report };
 }
