@@ -107,9 +107,6 @@ function variantOf(scheme: Dict): Pick<ThemeCardPreset, "tokens" | "states"> {
       warning: hex(scheme.warning_color, FALLBACK.warning),
     },
     states: {
-      hover: {
-        surface: hex(scheme.hilited_key_back_color ?? scheme.hilited_keyboard_background, FALLBACK.surfaceAlt),
-      },
       pressed: {
         surface: hex(scheme.hilited_key_back_color ?? scheme.hilited_back_color, FALLBACK.primary),
         text: hex(scheme.hilited_key_text_color ?? scheme.hilited_text_color, FALLBACK.onPrimary),
@@ -263,30 +260,29 @@ function convertKeyboard(
     const click = importAction(source.click, ctx);
     const passthrough = pickUnknown(source, KEY_KNOWN_FIELDS);
     const slot: KeySlot = {
-      style: click ? "default" : "off",
       width,
-      ...(text(source.label) ? { label: text(source.label) } : {}),
-      ...(text(source.label_symbol) ? { label_symbol: text(source.label_symbol) } : {}),
-      ...(text(source.hint) ? { hint: text(source.hint) } : {}),
-      ...(click ? { click } : { click: { kind: "text", value: "" } }),
-      ...(importAction(source.long_click, ctx) ? { long_click: importAction(source.long_click, ctx) } : {}),
-      ...(importAction(source.double_click, ctx) ? { double_click: importAction(source.double_click, ctx) } : {}),
-      ...(importAction(source.swipe_up, ctx) ? { swipe_up: importAction(source.swipe_up, ctx) } : {}),
-      ...(importAction(source.swipe_down, ctx) ? { swipe_down: importAction(source.swipe_down, ctx) } : {}),
-      ...(importAction(source.swipe_left, ctx) ? { swipe_left: importAction(source.swipe_left, ctx) } : {}),
-      ...(importAction(source.swipe_right, ctx) ? { swipe_right: importAction(source.swipe_right, ctx) } : {}),
-      ...(Array.isArray(source.popup) ? { popup: source.popup.map(text).filter(Boolean) } : {}),
-      ...(text(source.key_back_color) ? { key_back_color: text(source.key_back_color) } : {}),
-      ...(text(source.key_text_color) ? { key_text_color: text(source.key_text_color) } : {}),
-      ...(text(source.key_symbol_color) ? { key_symbol_color: text(source.key_symbol_color) } : {}),
-      ...(text(source.key_border_color) ? { key_border_color: text(source.key_border_color) } : {}),
-      ...(text(source.hilited_key_back_color) ? { hilited_key_back_color: text(source.hilited_key_back_color) } : {}),
-      ...(text(source.hilited_key_text_color) ? { hilited_key_text_color: text(source.hilited_key_text_color) } : {}),
-      ...(text(source.hilited_key_symbol_color) ? { hilited_key_symbol_color: text(source.hilited_key_symbol_color) } : {}),
-      ...(text(source.hilited_key_border_color) ? { hilited_key_border_color: text(source.hilited_key_border_color) } : {}),
+      ...(click ? { style: "default", click } : { kind: "placeholder" as const }),
+      ...(click && text(source.label) ? { label: text(source.label) } : {}),
+      ...(click && text(source.label_symbol) ? { label_symbol: text(source.label_symbol) } : {}),
+      ...(click && text(source.hint) ? { hint: text(source.hint) } : {}),
+      ...(click && importAction(source.long_click, ctx) ? { long_click: importAction(source.long_click, ctx) } : {}),
+      ...(click && importAction(source.double_click, ctx) ? { double_click: importAction(source.double_click, ctx) } : {}),
+      ...(click && importAction(source.swipe_up, ctx) ? { swipe_up: importAction(source.swipe_up, ctx) } : {}),
+      ...(click && importAction(source.swipe_down, ctx) ? { swipe_down: importAction(source.swipe_down, ctx) } : {}),
+      ...(click && importAction(source.swipe_left, ctx) ? { swipe_left: importAction(source.swipe_left, ctx) } : {}),
+      ...(click && importAction(source.swipe_right, ctx) ? { swipe_right: importAction(source.swipe_right, ctx) } : {}),
+      ...(click && Array.isArray(source.popup) ? { popup: source.popup.map(text).filter(Boolean) } : {}),
+      ...(click && text(source.key_back_color) ? { key_back_color: text(source.key_back_color) } : {}),
+      ...(click && text(source.key_text_color) ? { key_text_color: text(source.key_text_color) } : {}),
+      ...(click && text(source.key_symbol_color) ? { key_symbol_color: text(source.key_symbol_color) } : {}),
+      ...(click && text(source.key_border_color) ? { key_border_color: text(source.key_border_color) } : {}),
+      ...(click && text(source.hilited_key_back_color) ? { hilited_key_back_color: text(source.hilited_key_back_color) } : {}),
+      ...(click && text(source.hilited_key_text_color) ? { hilited_key_text_color: text(source.hilited_key_text_color) } : {}),
+      ...(click && text(source.hilited_key_symbol_color) ? { hilited_key_symbol_color: text(source.hilited_key_symbol_color) } : {}),
+      ...(click && text(source.hilited_key_border_color) ? { hilited_key_border_color: text(source.hilited_key_border_color) } : {}),
       ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
     };
-    if (number(source.height)) slot.height = number(source.height);
+    if (click && number(source.height)) slot.height = number(source.height);
     row.keys.push(slot);
     used += width;
   }

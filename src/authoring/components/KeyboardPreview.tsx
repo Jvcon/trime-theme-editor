@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { KeySlot, LayoutPreset, Orientation, PresetLibraries, ProjectBundle, ProjectMetrics } from "../types";
-import { actionLabel, defaultChrome, keyStyleColors, tokenValue } from "../utils";
+import { actionLabel, defaultChrome, isPlaceholder, keyStyleColors, tokenValue } from "../utils";
 
 export type KeyPosition = { row: number; key: number };
 export type DropPosition = { row: number; index: number };
@@ -72,24 +72,24 @@ export function KeyboardPreview({
 
   return (
     <div className="mx-auto w-full" style={{ maxWidth: fit === "device" && orientation === "portrait" ? 360 : undefined }}>
-      <div className="overflow-hidden rounded-2xl border-2 p-2 shadow-xl" style={{ borderColor: colors.border, background: colors.bg }}>
+      <div className="overflow-hidden rounded-2xl border-2 p-2 shadow-preview" style={{ borderColor: colors.border, background: colors.bg }}>
         {chrome ? (
           <>
-            <div className="mb-1 flex items-center gap-2 rounded px-2 py-1" style={{ background: colors.surfaceAlt, color: colors.text }}>
-              <span className="text-[9px]" style={{ color: colors.textMuted }}>候选</span>
-              <span className="text-[11px]">你好</span>
-              <span className="text-[8px]" style={{ color: colors.textMuted }}>nǐ hǎo</span>
-              <span className="ml-auto text-[8px]" style={{ color: colors.textMuted }}>1/9</span>
+            <div className="mb-1 flex items-center gap-stack rounded px-2 py-1" style={{ background: colors.surfaceAlt, color: colors.text }}>
+              <span className="text-3xs" style={{ color: colors.textMuted }}>候选</span>
+              <span className="text-caption">你好</span>
+              <span className="text-4xs" style={{ color: colors.textMuted }}>nǐ hǎo</span>
+              <span className="ml-auto text-4xs" style={{ color: colors.textMuted }}>1/9</span>
             </div>
 
             <div className="mb-1 flex items-center gap-1 rounded px-1 py-1" style={{ background: colors.surfaceAlt }}>
-              <span className="rounded border px-1.5 py-0.5 text-[8px]" style={{ borderColor: colors.border, color: colors.text }}>⌄</span>
-              <span className="rounded border px-1.5 py-0.5 text-[8px]" style={{ borderColor: colors.border, color: colors.text }}>
+              <span className="rounded border px-1.5 py-0.5 text-4xs" style={{ borderColor: colors.border, color: colors.text }}>⌄</span>
+              <span className="rounded border px-1.5 py-0.5 text-4xs" style={{ borderColor: colors.border, color: colors.text }}>
                 {toolbar.primaryButton.label ?? toolbar.primaryButton.action.split("_").pop() ?? "Sym"}
               </span>
               <span className="ml-auto flex gap-1">
                 {toolbar.buttons.slice(0, 6).map((button, index) => (
-                  <span key={`${button.action}-${index}`} className="rounded border px-1.5 py-0.5 text-[8px]" style={{ borderColor: colors.border, color: colors.textMuted }}>
+                  <span key={`${button.action}-${index}`} className="rounded border px-1.5 py-0.5 text-4xs" style={{ borderColor: colors.border, color: colors.textMuted }}>
                     {(button.label ?? button.action.split("_").pop() ?? "·").slice(0, 6)}
                   </span>
                 ))}
@@ -100,7 +100,7 @@ export function KeyboardPreview({
 
         <div className="relative rounded-lg p-1" style={{ background: colors.surface }}>
           {layout.rows.length === 0 ? (
-            <p className="p-2 text-[10px]" style={{ color: colors.textMuted }}>这个布局还没有行。</p>
+            <p className="p-2 text-2xs" style={{ color: colors.textMuted }}>这个布局还没有行。</p>
           ) : null}
 
           {layout.rows.map((row, rowIndex) => (
@@ -162,7 +162,7 @@ export function KeyboardPreview({
             const popupTextSize = metrics.popupTextSize ?? 22;
             return (
               <div className="pointer-events-none absolute z-20" style={{ left: `${left}%`, top, transform: "translateX(-50%)" }}>
-                <div className="pointer-events-auto flex gap-1 rounded-lg border p-1 shadow-2xl" style={{ background: colors.surfaceAlt, borderColor: colors.border }}>
+                <div className="pointer-events-auto flex gap-1 rounded-lg border p-1 shadow-overlay" style={{ background: colors.surfaceAlt, borderColor: colors.border }}>
                   {popupKey.popup.map((item) => (
                     <button
                       key={item}
@@ -206,6 +206,15 @@ function PreviewKey({
   const timer = useRef<number | undefined>(undefined);
   const fired = useRef(false);
 
+  // Trime creates no Key for a placeholder: it only reserves width, so it is
+  // never drawn or pressed. Legacy bundles used an empty text click + off style;
+  // both forms are recognized here.
+  const spacer = isPlaceholder(slot);
+
+  if (spacer && !interactive) {
+    return <span aria-hidden className="block min-w-0" style={{ width: `${slot.width}%`, height }} />;
+  }
+
   const start = () => {
     if (!interactive) return;
     fired.current = false;
@@ -223,9 +232,17 @@ function PreviewKey({
     <button
       type="button"
       draggable={interactive}
-      className={`relative min-w-0 overflow-hidden rounded-md border px-1 text-[11px] ${selected ? "ring-2 ring-primary" : ""} ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-l-2 border-primary" : ""}`}
-      style={{ width: `${slot.width}%`, height, background: colors.background, color: colors.text, borderColor: colors.border }}
-      title={actionText}
+      tabIndex={interactive ? 0 : -1}
+      aria-hidden={interactive ? undefined : true}
+      className={`relative min-w-0 overflow-hidden rounded-md border px-1 text-caption ${selected ? "ring-2 ring-primary" : ""} ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-l-2 border-primary" : ""} ${spacer ? "border-dashed opacity-60" : ""}`}
+      style={{
+        width: `${slot.width}%`,
+        height,
+        background: spacer ? "transparent" : colors.background,
+        color: spacer ? "transparent" : colors.text,
+        borderColor: colors.border,
+      }}
+      title={spacer ? "占位符：只占宽度，不渲染按键" : actionText}
       onPointerDown={interactive ? start : undefined}
       onPointerUp={interactive ? stop : undefined}
       onPointerLeave={interactive ? stop : undefined}
@@ -241,11 +258,17 @@ function PreviewKey({
       onDragOver={interactive ? onDragOver : undefined}
       onDrop={interactive ? onDrop : undefined}
     >
-      <span className="block whitespace-normal break-words leading-tight">{slot.label ?? actionText}</span>
-      {slot.label_symbol ? <span className="absolute left-1 top-0 text-[8px]" style={{ color: colors.symbol }}>{slot.label_symbol}</span> : null}
-      {slot.hint ? <span className="absolute inset-x-1 bottom-0 truncate text-[8px]" style={{ color: colors.symbol }}>{slot.hint}</span> : null}
-      {slot.popup?.length ? <span className="absolute right-1 top-0 text-[8px] opacity-70">▾</span> : null}
-      {slot.long_click ? <span className="absolute right-1 bottom-0 text-[8px] opacity-60">↳</span> : null}
+      {spacer ? (
+        <span className="block text-center text-4xs" style={{ color: colors.symbol }}>间隙</span>
+      ) : (
+        <>
+          <span className="block whitespace-normal break-words leading-tight">{slot.label ?? actionText}</span>
+          {slot.label_symbol ? <span className="absolute left-1 top-0 text-4xs" style={{ color: colors.symbol }}>{slot.label_symbol}</span> : null}
+          {slot.hint ? <span className="absolute inset-x-1 bottom-0 truncate text-4xs" style={{ color: colors.symbol }}>{slot.hint}</span> : null}
+          {slot.popup?.length ? <span className="absolute right-1 top-0 text-4xs opacity-70">▾</span> : null}
+          {slot.long_click ? <span className="absolute right-1 bottom-0 text-4xs opacity-60">↳</span> : null}
+        </>
+      )}
     </button>
   );
 }

@@ -1,6 +1,6 @@
 import YAML from "yaml";
 import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, WindowConfig } from "./types";
-import { defaultChrome, defaultKeyStyles, defaultThemeSelection, normalizeBundle, normalizeChrome } from "./utils";
+import { defaultChrome, defaultKeyStyles, defaultThemeSelection, isPlaceholder, normalizeBundle, normalizeChrome } from "./utils";
 import { mergeMetrics, resolveLayoutForDevice } from "./resolve";
 import { BUILTIN_PRESETS } from "./presets";
 
@@ -284,6 +284,9 @@ function compileKey(
   keyStyles: Record<string, KeyStyle>,
   macroKeyOf: (id: string) => string,
 ) {
+  if (isPlaceholder(slot)) {
+    return { ...(slot.passthrough ?? {}), width: Number((slot.width ?? 0).toFixed(3)) };
+  }
   const key: Record<string, unknown> = { ...(slot.passthrough ?? {}) };
   if (slot.click) {
     const token = actionToken(slot.click, macroKeyOf);
@@ -342,10 +345,6 @@ function compileLayout(
   const keys: Record<string, unknown>[] = [];
   for (const row of layout.rows) {
     row.keys.forEach((slot, index) => {
-      if (slot.click?.kind === "text" && slot.click.value === "") {
-        keys.push({ ...(slot.passthrough ?? {}), width: Number((slot.width ?? 10).toFixed(3)) });
-        return;
-      }
       keys.push(compileKey(slot, row.height, index === 0, card, keyStyles, macroKeyOf));
     });
   }

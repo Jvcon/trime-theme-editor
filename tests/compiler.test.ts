@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import { compileBundle, defaultBundle, stringifyTrime } from "../src/authoring/compiler";
 import { normalizeBundle } from "../src/authoring/utils";
 
@@ -24,6 +25,26 @@ describe("compileBundle", () => {
     bundle.variant = "dark";
     bundle.theme.dark.tokens.primary = "#123456";
     expect(compileBundle(bundle)).toContain("0xFF123456");
+  });
+
+  it("compiles spacer slots as invisible width-only gaps", () => {
+    const bundle = defaultBundle();
+    const layout = bundle.layouts[0];
+    layout.rows[0].keys.push({ kind: "placeholder", width: 6.789 });
+    const yaml = YAML.parse(compileBundle(bundle)) as {
+      preset_keyboards: Record<string, { keys: Array<Record<string, unknown>> }>;
+    };
+    const spacer = yaml.preset_keyboards[layout.id].keys.find((key) => key.width === 6.789);
+    expect(spacer).toEqual({ width: 6.789 });
+  });
+
+  it("normalizes legacy empty-click spacers into placeholders", () => {
+    const bundle = defaultBundle();
+    const layout = bundle.layouts[0];
+    layout.rows[0].keys.push({ style: "off", width: 6.789, click: { kind: "text", value: "" } });
+    const normalized = normalizeBundle(bundle);
+    const slot = normalized.layouts[0].rows[0].keys[normalized.layouts[0].rows[0].keys.length - 1];
+    expect(slot).toEqual({ kind: "placeholder", width: 6.789 });
   });
 
   it("prunes unused built-in layouts but keeps authored ones", () => {

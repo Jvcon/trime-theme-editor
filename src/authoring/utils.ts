@@ -1,6 +1,6 @@
 import { BUILTIN_PRESETS, DEFAULT_LIQUID, DEFAULT_PREEDIT, DEFAULT_TOOLBAR, DEFAULT_WINDOW, KEY_STYLES } from "./presets";
 import { LAYOUT_RULES } from "./devicePresets";
-import type { ActionRef, ChromeConfig, ChromePatch, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
+import type { ActionRef, ChromeConfig, ChromePatch, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
 
 function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
   const seen = new Set<string>();
@@ -33,6 +33,33 @@ export function libraries(bundle: ProjectBundle): PresetLibraries {
 
 export function defaultKeyStyles(): Record<string, KeyStyle> {
   return structuredClone(KEY_STYLES) as unknown as Record<string, KeyStyle>;
+}
+
+/**
+ * Trime does not create a Key for a slot without a click token, so the slot is
+ * a pure layout gap. Legacy bundles modelled it as an empty text click +
+ * off style; both forms resolve to a placeholder here.
+ */
+export function isPlaceholder(slot: KeySlot): boolean {
+  return slot.kind === "placeholder"
+    || (slot.click?.kind === "text" && slot.click.value === "");
+}
+
+/** Collapses legacy spacers and drops key-only fields from placeholders. */
+export function normalizeKeySlot(slot: KeySlot): KeySlot {
+  if (!isPlaceholder(slot)) {
+    if (slot.kind === "key") {
+      const { kind: _kind, ...rest } = slot;
+      return rest;
+    }
+    return slot;
+  }
+  return {
+    kind: "placeholder",
+    width: slot.width ?? 0,
+    ...(slot.id ? { id: slot.id } : {}),
+    ...(slot.passthrough ? { passthrough: slot.passthrough } : {}),
+  };
 }
 
 export function defaultChrome(): ChromeConfig {
@@ -254,6 +281,13 @@ function sameTokens(left: Record<string, string>, right: Record<string, string>)
   return true;
 }
 
+function themeStates(states: Record<string, Record<string, string>>): Record<string, Record<string, string>> {
+  const next = structuredClone(states);
+  // hover was never rendered by Trime; drop it from stored and imported cards.
+  delete next.hover;
+  return next;
+}
+
 function normalizeCard(value: unknown, fallback: ThemeCardPreset, appearance?: "light" | "dark"): ThemeCardPreset {
   if (!isThemeCard(value)) return structuredClone(fallback);
   const id = String(value.id || fallback.id);
@@ -273,7 +307,7 @@ function normalizeCard(value: unknown, fallback: ThemeCardPreset, appearance?: "
     ...(resolvedAppearance ? { appearance: resolvedAppearance } : {}),
     ...(family ? { family } : {}),
     tokens: { ...structuredClone(fallback.tokens), ...structuredClone(value.tokens) },
-    states: { ...structuredClone(fallback.states), ...structuredClone(value.states) },
+    states: themeStates({ ...structuredClone(fallback.states), ...structuredClone(value.states) }),
   };
 }
 
@@ -291,7 +325,7 @@ function splitLegacyVariant(legacy: LegacyThemeCard, variant: "light" | "dark"):
     builtin: false,
     appearance: variant,
     tokens: structuredClone(colorSet.tokens),
-    states: structuredClone(colorSet.states),
+    states: themeStates(colorSet.states),
   };
 }
 
@@ -360,8 +394,17 @@ export function normalizeBundle(input: ProjectBundle): ProjectBundle {
   bundle.customThemeCards = [...custom.values()];
 
   bundle.keyStyles = bundle.keyStyles ?? defaultKeyStyles();
+  // disabled is no longer a key-style layer; off is the disabled/off role.
+  for (const style of Object.values(bundle.keyStyles)) {
+    delete (style as KeyStyle & { disabled?: unknown }).disabled;
+  }
   bundle.macros = Array.isArray(bundle.macros) ? bundle.macros : [];
   bundle.layouts = Array.isArray(bundle.layouts) && bundle.layouts.length > 0 ? bundle.layouts : fallbackLayouts();
+  for (const layout of bundle.layouts) {
+    for (const row of layout.rows) {
+      row.keys = row.keys.map(normalizeKeySlot);
+    }
+  }
   // Landscape variants are an additive, optional field. Drop dangling or
   // self-referencing ids so the bundle stays self-contained.
   const layoutIds = new Set(bundle.layouts.map((item) => item.id));
@@ -420,8 +463,8 @@ export function tokenValue(card: ThemeCardPreset, token: string | undefined, sta
   return "transparent";
 }
 
-export function keyStyleColors(card: ThemeCardPreset, keyStyles: Record<string, KeyStyle>, styleId: string) {
-  const style = keyStyles[styleId] ?? keyStyles.default;
+export function keyStyleColors(card: ThemeCardPreset, keyStyles: Record<string, KeyStyle>, styleId?: string) {
+  const style = (styleId ? keyStyles[styleId] : undefined) ?? keyStyles.default;
   return {
     background: tokenValue(card, style.background),
     text: tokenValue(card, style.text),

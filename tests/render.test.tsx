@@ -8,8 +8,9 @@ import { PreviewRail } from "../src/authoring/components/PreviewRail";
 import { ProjectDrawer } from "../src/authoring/components/ProjectDrawer";
 import { DevicesPanel } from "../src/authoring/panels/DevicesPanel";
 import { ExportPanel } from "../src/authoring/panels/ExportPanel";
+import { LayoutsPanel } from "../src/authoring/panels/LayoutsPanel";
 import { ThemesPanel } from "../src/authoring/panels/ThemesPanel";
-import { libraries } from "../src/authoring/utils";
+import { isPlaceholder, libraries } from "../src/authoring/utils";
 
 const noop = vi.fn();
 
@@ -44,6 +45,56 @@ describe("AuthoringApp", () => {
     expect(html).toContain("浅色 · Alucard");
     expect(html).toContain("深色 · Dracula");
     expect(html).toContain("切换后同步右侧预览");
+  });
+
+  it("keeps key styles in one panel and drops the card-level state section", () => {
+    const project = defaultBundle();
+    const html = renderToStaticMarkup(
+      <ThemesPanel
+        project={project}
+        libs={libraries(project)}
+        mutate={noop}
+        setMessage={noop}
+      />,
+    );
+    expect(html).toContain("键样式");
+    expect(html).toContain("收起仅引用，点编辑才修改");
+    expect(html).toContain("关闭/禁用");
+    expect(html).not.toContain("状态覆盖");
+    expect(html).not.toContain("pressed / disabled");
+  });
+
+  it("edits placeholders as width-only slots", () => {
+    const project = defaultBundle();
+    const layout = project.layouts[0];
+    let position: { row: number; key: number } | undefined;
+    layout.rows.forEach((row, rowIndex) => {
+      row.keys.forEach((key, keyIndex) => {
+        if (!position && isPlaceholder(key)) position = { row: rowIndex, key: keyIndex };
+      });
+    });
+    if (!position) throw new Error("default layout has no placeholder");
+    const html = renderToStaticMarkup(
+      <LayoutsPanel
+        project={project}
+        libs={libraries(project)}
+        activeLayoutId={layout.id}
+        setActiveLayoutId={noop}
+        mutate={noop}
+        editLayout={noop}
+        setMessage={noop}
+        selected={position}
+        onSelectKey={noop}
+        popup={null}
+        onPopupKey={noop}
+        rightTab="key"
+        setRightTab={noop}
+        onMoveKey={noop}
+      />,
+    );
+    expect(html).toContain("Add placeholder");
+    expect(html).toContain("只占宽度，不渲染按键");
+    expect(html).not.toContain("Label symbol");
   });
 
   it("offers a light/dark switch inside the preview rail", () => {

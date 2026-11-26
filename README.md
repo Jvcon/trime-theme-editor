@@ -61,15 +61,18 @@
 - 内置 Dracula / Alucard、Catppuccin Latte / Frappé / Macchiato / Mocha、
   Solarized Light / Dark、Material Light / Dark、Nord Light / Dark
 - 浅色方案与深色方案分别选择，互不影响；色卡本身是一套单方案
-- 色值 / 状态覆盖 / 键样式 / 尺寸区域用 tab 切换浅色/深色，并联动右侧预览
+- 色值 / 键样式 / 尺寸区域用 tab 切换浅色/深色，并联动右侧预览
 - 色值栏与其余设置的宽度可拖动分隔条调整，双击恢复 30%
 - 常驻预览约占 30% 宽度
+- 编辑器本体支持浅色 / 深色界面，选择会记忆在本机；与预览的浅色 / 深色方案互不影响
 - 预览栏自带浅色/深色切换，其他步骤也能随时切换预览方向
 - 修改内置色卡时自动复制为自定义方案；自定义方案显示“自定义”
 - 自定义色卡保存在项目内，随 bundle 导出，切换选择不会丢失
-- token 与 hover / pressed / disabled 状态覆盖
+- 键样式只有常态 / 按下两层；`off` 即关闭/禁用角色
+- 布局占位符（`Add placeholder`）只占宽度，不生成按键，与 `off` 样式无关
 - 色卡复制 / 新建 / 删除 / 重命名
 - Key style：键只引用 style type，style type 只引用色卡 token
+- 键样式默认收起只显示摘要，点编辑才展开当前样式
 - `default` 写入 `key_*`，`off` 写入 `off_key_*`；`modifier` / `enter` / `space` /
   自定义样式只写 `preset_keyboards` 的单键颜色
 - 非 default 单键颜色按预览方向固化，不随浅色/深色方案自动切换

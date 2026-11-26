@@ -32,7 +32,6 @@ export type KeyStyle = {
   symbol?: string;
   border?: string;
   pressed?: Partial<Record<"background" | "text" | "symbol" | "border", string>>;
-  disabled?: Partial<Record<"background" | "text" | "symbol" | "border", string>>;
 };
 
 export type MacroStep =
@@ -62,11 +61,17 @@ export type ActionRef =
   | { kind: "text"; value: string };
 
 export type KeySlot = {
+  /**
+   * `placeholder` reserves horizontal space only: Trime creates no Key for it,
+   * so it is never drawn or pressed. Omitted means a normal key.
+   */
+  kind?: "key" | "placeholder";
   id?: string;
   label?: string;
   label_symbol?: string;
   hint?: string;
-  style: string;
+  /** Required for normal keys; unused by placeholders. */
+  style?: string;
   width: number;
   height?: number;
   click?: ActionRef;

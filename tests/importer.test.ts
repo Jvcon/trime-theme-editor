@@ -47,4 +47,19 @@ describe("importTrimeYaml", () => {
     expect(yaml).toContain("macro_hello");
     expect(yaml).toContain("preset_keyboards:");
   });
+
+  it("imports width-only keys as placeholders", () => {
+    const source = `
+name: Spacer Theme
+preset_keyboards:
+  default:
+    keys:
+      - { click: a, width: 50, label: A }
+      - { width: 50 }
+`;
+    const { project } = importTrimeYaml(source, "spacer.yaml");
+    const layout = project.layouts.find((item) => item.id === project.mainLayoutId);
+    const slots = layout?.rows.flatMap((row) => row.keys) ?? [];
+    expect(slots[1]).toEqual({ kind: "placeholder", width: 50 });
+  });
 });

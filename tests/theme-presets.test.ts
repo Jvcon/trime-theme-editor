@@ -26,10 +26,20 @@ describe("built-in theme cards", () => {
       for (const token of REQUIRED_THEME_TOKENS) {
         expect(item.tokens[token]).toMatch(/^#[0-9a-fA-F]{6}$/);
       }
-      expect(item.states.hover.surface).toBe(item.tokens.surfaceAlt);
       expect(item.states.pressed.surface).toBe(item.tokens.primary);
-      expect(item.states.disabled.text).toBe(item.tokens.textMuted);
     }
+  });
+
+  it("does not keep hover or per-style disabled layers", () => {
+    for (const item of BUILTIN_PRESETS.themeCards) {
+      expect(item.states).not.toHaveProperty("hover");
+    }
+    const legacy = structuredClone(defaultBundle()) as unknown as {
+      keyStyles: Record<string, Record<string, unknown>>;
+    };
+    legacy.keyStyles.default.disabled = { background: "surfaceAlt", text: "textMuted" };
+    const normalized = normalizeBundle(legacy as never);
+    expect(normalized.keyStyles.default).not.toHaveProperty("disabled");
   });
 
   it("uses the official Dracula, Catppuccin, and Solarized key colors", () => {

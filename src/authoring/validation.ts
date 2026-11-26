@@ -1,6 +1,6 @@
 import type { ProjectBundle } from "./types";
 import { LAYOUT_RULES } from "./devicePresets";
-import { libraries } from "./utils";
+import { isPlaceholder, libraries } from "./utils";
 
 export type IssueArea = "theme" | "layouts" | "interface" | "devices" | "export";
 
@@ -83,6 +83,7 @@ export function validateProject(project: ProjectBundle): Issue[] {
         issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行宽度合计 ${sum.toFixed(1)}%，不是 100%（可用 Fit 100% 修正）` });
       }
       row.keys.forEach((key, keyIndex) => {
+        if (isPlaceholder(key)) return;
         for (const behavior of ["click", "long_click", "double_click", "swipe_up", "swipe_down", "swipe_left", "swipe_right"] as const) {
           const action = key[behavior];
           if (action?.kind === "macro" && !macroIds.has(action.id)) {
@@ -98,8 +99,8 @@ export function validateProject(project: ProjectBundle): Issue[] {
         if (!key.click && !(key.label === undefined && key.style === "off")) {
           issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键没有 click 行为` });
         }
-        if (!project.keyStyles[key.style]) {
-          issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键引用了不存在的 style type：${key.style}` });
+        if (!key.style || !project.keyStyles[key.style]) {
+          issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行第 ${keyIndex + 1} 键引用了不存在的 style type：${key.style ?? "（空）"}` });
         }
       });
     });

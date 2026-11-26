@@ -28,9 +28,11 @@ accent / danger / success / warning`
 
 | 状态 | surface | text |
 |---|---|---|
-| `hover` | `surfaceAlt` | — |
 | `pressed` | `primary` | `onPrimary` |
-| `disabled` | `surfaceAlt` | `textMuted` |
+
+`off` 键就是 Trime 的关闭/禁用角色，由 `keyStyles.off` 直接生成
+`off_key_*` / `hilited_off_key_*`，因此不再有单独的 `disabled` 状态。
+导入时仍会把 `off_key_*` 记到 `states.disabled` 作为参考值，但编辑面板不再暴露它。
 
 ## 2. 来源
 

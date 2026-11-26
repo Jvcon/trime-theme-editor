@@ -5,13 +5,11 @@ export const KEY_STYLES = {
     id: "default", name: "Default",
     background: "surface", text: "text", symbol: "textMuted", border: "border",
     pressed: { background: "primary", text: "onPrimary", symbol: "onPrimary", border: "primary" },
-    disabled: { background: "surfaceAlt", text: "textMuted", symbol: "textMuted" },
   },
   modifier: {
     id: "modifier", name: "Modifier",
     background: "surfaceAlt", text: "textMuted", symbol: "textMuted", border: "border",
     pressed: { background: "primary", text: "onPrimary" },
-    disabled: { background: "surfaceAlt", text: "textMuted" },
   },
   enter: {
     id: "enter", name: "Enter",
@@ -60,9 +58,7 @@ function themeCard(
     appearance,
     tokens,
     states: {
-      hover: { surface: tokens.surfaceAlt },
       pressed: { surface: tokens.primary, text: tokens.onPrimary },
-      disabled: { surface: tokens.surfaceAlt, text: tokens.textMuted },
     },
   };
 }
@@ -156,7 +152,7 @@ function k(click: ActionRef, style = "default", width = 10, extra: Partial<KeySl
 }
 
 function spacer(width: number): KeySlot {
-  return { click: { kind: "text", value: "" }, style: "off", width };
+  return { kind: "placeholder", width };
 }
 
 const mainRows: LayoutRow[] = [
