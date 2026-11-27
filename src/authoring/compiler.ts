@@ -1,6 +1,6 @@
 import YAML from "yaml";
-import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, WindowConfig } from "./types";
-import { defaultChrome, defaultKeyStyles, defaultThemeSelection, isPlaceholder, normalizeBundle, normalizeChrome } from "./utils";
+import type { ActionRef, ChromeConfig, KeySlot, KeyStyle, LayoutPreset, LayoutRow, LiquidConfig, MacroPreset, PreeditConfig, ProjectBundle, ThemeCardPreset, ToolbarButton, WindowConfig } from "./types";
+import { defaultChrome, defaultKeyStyles, defaultThemeSelection, integerRowWidths, isPlaceholder, normalizeBundle, normalizeChrome, rowPercentages } from "./utils";
 import { mergeMetrics, resolveLayoutForDevice } from "./resolve";
 import { BUILTIN_PRESETS } from "./presets";
 
@@ -276,8 +276,30 @@ function actionToken(action: ActionRef | undefined, macroKeyOf: (id: string) => 
   return undefined;
 }
 
+/**
+ * Trime reads key widths as shares of 100 and wraps when a row reaches 100.
+ * Normalize every row so the editor's explicit rows survive compilation.
+ */
+function rowExportWidths(row: LayoutRow, precision: "exact" | "integer"): number[] {
+  if (precision === "integer") return integerRowWidths(row);
+  const percentages = rowPercentages(row);
+  if (percentages.length === 0) return [];
+  const rounded = percentages.map((value) => Number(value.toFixed(3)));
+  const diff = Number((100 - rounded.reduce((sum, value) => sum + value, 0)).toFixed(3));
+  if (diff !== 0) {
+    // Put the residual on the widest key so it can never become negative.
+    let widest = 0;
+    for (let index = 1; index < rounded.length; index += 1) {
+      if (rounded[index] > rounded[widest]) widest = index;
+    }
+    rounded[widest] = Number((rounded[widest] + diff).toFixed(3));
+  }
+  return rounded.map((value) => (value > 0 ? value : 0.001));
+}
+
 function compileKey(
   slot: KeySlot,
+  width: number,
   rowHeight: number | undefined,
   first: boolean,
   card: ThemeCardPreset,
@@ -285,7 +307,7 @@ function compileKey(
   macroKeyOf: (id: string) => string,
 ) {
   if (isPlaceholder(slot)) {
-    return { ...(slot.passthrough ?? {}), width: Number((slot.width ?? 0).toFixed(3)) };
+    return { ...(slot.passthrough ?? {}), width: Number(width.toFixed(3)) };
   }
   const key: Record<string, unknown> = { ...(slot.passthrough ?? {}) };
   if (slot.click) {
@@ -301,7 +323,7 @@ function compileKey(
   if (slot.label_symbol !== undefined) key.label_symbol = slot.label_symbol;
   if (slot.hint !== undefined) key.hint = slot.hint;
   if (slot.popup?.length) key.popup = slot.popup;
-  key.width = Number((slot.width ?? 10).toFixed(3));
+  key.width = Number(width.toFixed(3));
   if (slot.height) key.height = slot.height;
   if (first && rowHeight) key.height = rowHeight;
   if (slot.style && slot.style !== "default") {
@@ -341,11 +363,13 @@ function compileLayout(
   card: ThemeCardPreset,
   keyStyles: Record<string, KeyStyle>,
   macroKeyOf: (id: string) => string,
+  widthPrecision: "exact" | "integer",
 ) {
   const keys: Record<string, unknown>[] = [];
   for (const row of layout.rows) {
+    const widths = rowExportWidths(row, widthPrecision);
     row.keys.forEach((slot, index) => {
-      keys.push(compileKey(slot, row.height, index === 0, card, keyStyles, macroKeyOf));
+      keys.push(compileKey(slot, widths[index] ?? 100, row.height, index === 0, card, keyStyles, macroKeyOf));
     });
   }
   const firstHeight = layout.rows[0]?.height;
@@ -383,6 +407,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   // Layout key colors are baked into preset_keyboards; they follow the preview
   // direction. The light/dark schemes themselves use their own cards.
   const previewCard = bundle.theme[bundle.variant] ?? darkCard;
+  const widthPrecision = bundle.exportWidthPrecision === "integer" ? "integer" : "exact";
   const layout = resolveLayoutForDevice(bundle, device);
   const layouts = bundle.layouts;
   // Bundle macros are the selected set. References to macros that are not in
@@ -411,7 +436,7 @@ export function compileBundle(input: ProjectBundle, deviceId?: string): string {
   }
 
   const presetKeyboards: Record<string, unknown> = {};
-  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, previewCard, bundle.keyStyles, macroKeyOf);
+  for (const item of layouts) presetKeyboards[item.id] = compileLayout(item, previewCard, bundle.keyStyles, macroKeyOf, widthPrecision);
   if (layout && layout.id !== "default") presetKeyboards.default = { import_preset: layout.id };
 
   // Schema bindings emit alias keyboards that import an existing keyset.

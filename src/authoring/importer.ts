@@ -253,11 +253,14 @@ function convertKeyboard(
   for (const rawKey of rawKeys) {
     const source = asDict(rawKey);
     const width = number(source.width) ?? 10;
+    const keyHeight = number(source.height);
     if (used + width > 100.5 && row.keys.length > 0) {
       rows.push(row);
       row = { height: number(entry.height) ?? 52, keys: [] };
       used = 0;
     }
+    // Trime expresses a row's height on the key that starts the row.
+    if (keyHeight && row.keys.length === 0) row.height = keyHeight;
     const click = importAction(source.click, ctx);
     const passthrough = pickUnknown(source, KEY_KNOWN_FIELDS);
     const slot: KeySlot = {
@@ -283,7 +286,7 @@ function convertKeyboard(
       ...(click && text(source.hilited_key_border_color) ? { hilited_key_border_color: text(source.hilited_key_border_color) } : {}),
       ...(Object.keys(passthrough).length > 0 ? { passthrough } : {}),
     };
-    if (click && number(source.height)) slot.height = number(source.height);
+    if (click && keyHeight && row.keys.length > 0) slot.height = keyHeight;
     row.keys.push(slot);
     used += width;
   }

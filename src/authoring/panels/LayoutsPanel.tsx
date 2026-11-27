@@ -12,7 +12,7 @@ import { BEHAVIORS, Selector } from "../components/Selector";
 import { LAYOUT_RULES } from "../devicePresets";
 import { devicesUsingLayout, impactLabel } from "../impact";
 import type { ActionRef, KeySlot, LayoutPreset, Orientation, PresetLibraries, ProjectBundle } from "../types";
-import { actionLabel, addLandscapeVariant, cloneLayout, embedLayout, firstLayoutId, fitLayoutRows, groupLayouts, isPlaceholder, newLayout, pruneBundleLayouts, reflowLayoutRows, removeLandscapeVariant } from "../utils";
+import { actionLabel, addLandscapeVariant, cloneLayout, embedLayout, firstLayoutId, fitLayoutRows, fitRowWidths, groupLayouts, isPlaceholder, newLayout, pruneBundleLayouts, reflowLayoutRows, removeLandscapeVariant, tokenValue } from "../utils";
 
 type Props = {
   project: ProjectBundle;
@@ -47,6 +47,21 @@ const KEY_COLOR_FIELDS = [
 
 const targetOf = (slot: KeySlot | undefined, behavior: Behavior): ActionRef | undefined =>
   slot ? (slot as unknown as Record<string, ActionRef | undefined>)[behavior] : undefined;
+
+/** Theme cards store CSS hex; Trime writes colours as 0xAARRGGBB. */
+function toTrimeColor(value: string): string {
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return `0xFF${value.slice(1).toUpperCase()}`;
+  if (/^#[0-9a-fA-F]{8}$/.test(value)) return `0x${value.slice(1).toUpperCase()}`;
+  return value;
+}
+
+function colorSwatch(value: string, resolveToken: (token: string) => string): string {
+  if (!value) return "transparent";
+  const argb = /^0x([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(value);
+  if (argb) return argb[1].toUpperCase() === "FF" ? `#${argb[2]}` : `#${argb[2]}${argb[1]}`;
+  if (/^#[0-9a-fA-F]{6,8}$/.test(value)) return value;
+  return resolveToken(value);
+}
 
 export function LayoutsPanel({
   project, libs, activeLayoutId, setActiveLayoutId, mutate, editLayout, setMessage, onPreviewOrientation,
@@ -149,6 +164,13 @@ export function LayoutsPanel({
   const availableLayouts = libs.layouts.filter(
     (item) => !project.layouts.some((existing) => existing.id === item.id) && !variantIds.has(item.id),
   );
+  const themeCard = project.theme[project.variant] ?? libs.themeCards[0];
+  const colorOptions = themeCard
+    ? [
+      ...Object.keys(themeCard.tokens).map((token) => ({ token, value: toTrimeColor(tokenValue(themeCard, token)) })),
+      ...Object.keys(themeCard.states.pressed ?? {}).map((token) => ({ token: `pressed.${token}`, value: toTrimeColor(tokenValue(themeCard, `pressed.${token}`)) })),
+    ]
+    : [];
 
   const updateKey = (fn: (key: KeySlot) => void) => {
     if (!selected) return;
@@ -164,7 +186,9 @@ export function LayoutsPanel({
       return;
     }
     updateKey((key) => {
-      (key as unknown as Record<string, unknown>)[behavior] = action;
+      const record = key as unknown as Record<string, unknown>;
+      if (action) record[behavior] = action;
+      else delete record[behavior];
     });
   };
 
@@ -195,7 +219,7 @@ export function LayoutsPanel({
 
   const addRow = () => {
     editLayout(layout.id, (draft) => {
-      draft.rows.push({ height: 52, keys: [{ style: "default", width: 100, click: { kind: "char", value: "a" }, label: "A" }] });
+      draft.rows.push({ height: 52, keys: [{ style: "default", width: 10, click: { kind: "char", value: "a" }, label: "A" }] });
     });
     setMessage("已新增行");
   };
@@ -264,31 +288,29 @@ export function LayoutsPanel({
   const fitRow = (rowIndex: number) => {
     editLayout(layout.id, (draft) => {
       const row = draft.rows[rowIndex];
-      if (!row) return;
-      const total = row.keys.reduce((sum, key) => sum + (key.width || 1), 0);
-      row.keys.forEach((key) => {
-        key.width = Number((((key.width || 1) / total) * 100).toFixed(3));
-      });
+      if (row) fitRowWidths(row);
     });
+    setMessage("已把该行权重规整为整数");
   };
 
   const fitAllRows = () => {
     editLayout(layout.id, (draft) => fitLayoutRows(draft));
-    setMessage("已把每一行宽度校准到 100%");
+    setMessage("已把每行权重规整为整数");
   };
 
   const reflowRows = () => {
     editLayout(layout.id, (draft) => reflowLayoutRows(draft));
     onSelectKey(undefined);
-    setMessage("已按宽度重新分行，并校准到 100%");
+    setMessage("已按视觉宽度重新分行");
   };
 
   const distributeRow = (rowIndex: number) => {
     editLayout(layout.id, (draft) => {
       const row = draft.rows[rowIndex];
       if (!row || row.keys.length === 0) return;
-      row.keys.forEach((key) => { key.width = Number((100 / row.keys.length).toFixed(3)); });
+      row.keys.forEach((key) => { key.width = 10; });
     });
+    setMessage("已均分该行（每键 1 个标准键）");
   };
 
   const setAsDefault = (id: string) => {
@@ -379,7 +401,7 @@ export function LayoutsPanel({
   };
 
   const positionActions = selected ? (
-    <div className="flex flex-wrap gap-1 pt-1">
+    <div className="flex flex-wrap items-center justify-end gap-1">
       <Button size="sm" variant="outline" onClick={() => moveKey(-1)} disabled={!selected || selected.key === 0}><ArrowLeft />Left</Button>
       <Button size="sm" variant="outline" onClick={() => moveKey(1)} disabled={!selected || selected.key >= layout.rows[selected.row].keys.length - 1}><ArrowRight />Right</Button>
       <Button size="sm" variant="outline" onClick={() => moveKeyToRow(-1)} disabled={!selected || selected.row === 0}><ArrowUp />Row</Button>
@@ -480,12 +502,8 @@ export function LayoutsPanel({
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-panel xl:grid-cols-[minmax(0,3fr)_minmax(340px,2fr)]">
-        <div className="flex min-h-0 flex-col gap-3">
-          <div className="hidden rounded-lg border border-border bg-muted/10 px-3 py-2 text-2xs text-muted-foreground lg:block">
-            键盘在右侧「键盘编辑」中：点击选键、拖拽移动、长按 popup。小屏时这里会内嵌同一编辑器。
-          </div>
-
+      <div className="min-h-0 flex-1 overflow-auto p-panel">
+        <div className="flex flex-col gap-3">
           <section className="rounded-xl border border-border bg-card p-gutter lg:hidden">
             <div className="mb-2 flex items-center gap-stack">
               <span className="text-xs font-medium">键盘编辑</span>
@@ -511,61 +529,16 @@ export function LayoutsPanel({
           </section>
 
           <section className="rounded-xl border border-border bg-card p-gutter">
-            <div className="mb-2 flex items-center gap-stack">
-              <span className="text-xs font-medium">Row editor</span>
-              <Button size="sm" variant="ghost" className="ml-auto h-control-sm text-2xs" onClick={fitAllRows}>Fit all</Button>
-              <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={reflowRows}>Reflow</Button>
-              <Button size="sm" variant="outline" className="h-control-sm" onClick={addRow}><Plus />Add row</Button>
-              <Button size="sm" variant="outline" className="h-control-sm" onClick={addKey}><Plus />Add key</Button>
-              <Button size="sm" variant="outline" className="h-control-sm" onClick={addPlaceholder}><Plus />Add placeholder</Button>
-            </div>
-            <div className="space-y-1">
-              {layout.rows.map((row, rowIndex) => (
-                <div key={rowIndex} className="flex items-center gap-stack rounded border border-border bg-muted/20 px-2 py-1 text-2xs">
-                  <span className="w-14">Row {rowIndex + 1}</span>
-                  {(() => {
-                    const keys = row.keys.filter((key) => !isPlaceholder(key)).length;
-                    const gaps = row.keys.length - keys;
-                    return <span className="w-24 text-muted-foreground">{keys} keys{gaps ? ` · ${gaps} gap${gaps === 1 ? "" : "s"}` : ""}</span>;
-                  })()}
-                  {(() => {
-                    const sum = row.keys.reduce((total, key) => total + (key.width || 0), 0);
-                    return <span className={`w-14 ${Math.abs(sum - 100) > LAYOUT_RULES.rowWidthTolerance ? "text-warning" : "text-muted-foreground"}`} title="该行宽度合计">{sum.toFixed(1)}%</span>;
-                  })()}
-                  <span className="text-muted-foreground">height</span>
-                  <Input className="h-control-xs w-14" type="number" value={row.height ?? 0} onChange={(event) => editLayout(layout.id, (draft) => { draft.rows[rowIndex].height = Number(event.target.value); })} />
-                  <Button size="sm" variant="ghost" className="h-control-xs px-1" onClick={() => moveRow(rowIndex, -1)} disabled={rowIndex === 0}><ArrowUp /></Button>
-                  <Button size="sm" variant="ghost" className="h-control-xs px-1" onClick={() => moveRow(rowIndex, 1)} disabled={rowIndex === layout.rows.length - 1}><ArrowDown /></Button>
-                  <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => fitRow(rowIndex)}>Fit 100%</Button>
-                  <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => distributeRow(rowIndex)}>Distribute</Button>
-                  <Button size="sm" variant="ghost" className="ml-auto h-control-xs px-1 text-destructive" onClick={() => deleteRow(rowIndex)}><Trash2 /></Button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {selectedPlaceholder ? (
-            <div className="rounded-xl border border-border bg-card p-gutter text-2xs text-muted-foreground">
-              占位符只占宽度，不能绑定行为。添加普通键后再配置 click / long_click 等。
-            </div>
-          ) : (
-            <Selector libs={libs} pageTargets={group} targetBehavior={targetBehavior} setTargetBehavior={(value) => setTargetBehavior(value as Behavior)} onAssign={(action) => {
-              if (!selected) return setMessage("先在右侧键盘编辑里选择一个键");
-              setBehavior(targetBehavior, action);
-            }} />
-          )}
-        </div>
-
-        <section className="min-h-0 rounded-xl border border-border bg-card p-gutter">
           <Tabs value={rightTab} onValueChange={setRightTab}>
-            <TabsList>
-              <TabsTrigger value="page">布局</TabsTrigger>
-              <TabsTrigger value="key">键</TabsTrigger>
-              <TabsTrigger value="behavior">行为</TabsTrigger>
-              <TabsTrigger value="style">样式</TabsTrigger>
-            </TabsList>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <TabsList>
+                <TabsTrigger value="page">布局</TabsTrigger>
+                <TabsTrigger value="key">键</TabsTrigger>
+              </TabsList>
+              {rightTab === "key" ? positionActions : null}
+            </div>
 
-            <div className="mt-2 max-h-[calc(100vh-13rem)] overflow-auto pr-1">
+            <div className="mt-2">
               <TabsContent value="page" className="mt-0 space-y-2">
                 <Field label="Layout name"><Input value={layout.name} onChange={(event) => editLayout(layout.id, (draft) => { draft.name = event.target.value; })} /></Field>
                 <Field label="Role">
@@ -575,6 +548,42 @@ export function LayoutsPanel({
                     <option value="symbols">symbols</option>
                   </Select>
                 </Field>
+
+                <div className="space-y-2 border-t border-border pt-2">
+                  <div className="flex flex-wrap items-center gap-stack">
+                    <span className="text-xs font-medium">Row editor</span>
+                    <Button size="sm" variant="ghost" className="ml-auto h-control-sm text-2xs" onClick={fitAllRows}>整数化</Button>
+                    <Button size="sm" variant="ghost" className="h-control-sm text-2xs" onClick={reflowRows}>Reflow</Button>
+                    <Button size="sm" variant="outline" className="h-control-sm" onClick={addRow}><Plus />Add row</Button>
+                    <Button size="sm" variant="outline" className="h-control-sm" onClick={addKey}><Plus />Add key</Button>
+                    <Button size="sm" variant="outline" className="h-control-sm" onClick={addPlaceholder}><Plus />Add placeholder</Button>
+                  </div>
+                  <div className="space-y-1">
+                    {layout.rows.map((row, rowIndex) => (
+                      <div key={rowIndex} className="flex items-center gap-stack rounded border border-border bg-muted/20 px-2 py-1 text-2xs">
+                        <span className="w-14">Row {rowIndex + 1}</span>
+                        {(() => {
+                          const keys = row.keys.filter((key) => !isPlaceholder(key)).length;
+                          const gaps = row.keys.length - keys;
+                          return <span className="w-24 text-muted-foreground">{keys} keys{gaps ? ` · ${gaps} gap${gaps === 1 ? "" : "s"}` : ""}</span>;
+                        })()}
+                        {(() => {
+                          const sum = row.keys.reduce((total, key) => total + Math.max(0, key.width || 0), 0);
+                          const shown = Number.isInteger(sum) ? String(sum) : sum.toFixed(1);
+                          return <span className="w-20 text-muted-foreground" title="行内相对权重；渲染时按行归一化为 100%">{shown} 权重</span>;
+                        })()}
+                        <span className="text-muted-foreground">height</span>
+                        <Input className="h-control-xs w-14" type="number" value={row.height ?? 0} onChange={(event) => editLayout(layout.id, (draft) => { draft.rows[rowIndex].height = Number(event.target.value); })} />
+                        <Button size="sm" variant="ghost" className="h-control-xs px-1" onClick={() => moveRow(rowIndex, -1)} disabled={rowIndex === 0}><ArrowUp /></Button>
+                        <Button size="sm" variant="ghost" className="h-control-xs px-1" onClick={() => moveRow(rowIndex, 1)} disabled={rowIndex === layout.rows.length - 1}><ArrowDown /></Button>
+                        <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => fitRow(rowIndex)}>取整</Button>
+                        <Button size="sm" variant="ghost" className="h-control-xs px-1 text-3xs" onClick={() => distributeRow(rowIndex)}>均分</Button>
+                        <Button size="sm" variant="ghost" className="ml-auto h-control-xs px-1 text-destructive" onClick={() => deleteRow(rowIndex)}><Trash2 /></Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <p className="text-2xs text-muted-foreground">
                   布局组由默认布局 + 其他布局组成；编译时每个布局成为一个 preset_keyboard。Role 只是分类提示，不决定默认布局。
                 </p>
@@ -588,145 +597,234 @@ export function LayoutsPanel({
                 {selectedKey && selected ? (
                   selectedPlaceholder ? (
                     <>
-                      <div className="flex items-center gap-stack">
+                      <div className="flex flex-wrap items-center gap-stack">
                         <Badge variant="muted">placeholder</Badge>
+                        <span className="text-2xs text-muted-foreground">Row {selected.row + 1} · Key {selected.key + 1}</span>
                         <span className="text-2xs text-muted-foreground">只占宽度，不渲染按键</span>
                       </div>
                       <Field label="Width %"><Input type="number" value={selectedKey.width} onChange={(event) => updateKey((key) => { key.width = Number(event.target.value); })} /></Field>
                       <p className="text-3xs text-muted-foreground">占位符不能设置 label、行为、样式或颜色；如果需要一个可点击的空白键，请添加普通键并选用 off 样式。</p>
-                      {positionActions}
                     </>
                   ) : (
                   <>
-                    <Field label="Label"><Input value={selectedKey.label ?? ""} onChange={(event) => updateKey((key) => { key.label = event.target.value; })} /></Field>
-                    <div className="grid grid-cols-2 gap-stack">
+                    <div className="flex flex-wrap items-center gap-stack">
+                      <Badge variant="success">Row {selected.row + 1} · Key {selected.key + 1}</Badge>
+                      <span className="text-3xs text-muted-foreground">从键内容、样式到行为依次编辑</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-stack sm:grid-cols-3">
+                      <Field label="Label"><Input value={selectedKey.label ?? ""} onChange={(event) => updateKey((key) => { key.label = event.target.value; })} /></Field>
                       <Field label="Label symbol"><Input value={selectedKey.label_symbol ?? ""} onChange={(event) => updateKey((key) => { key.label_symbol = event.target.value; })} /></Field>
                       <Field label="Hint"><Input value={selectedKey.hint ?? ""} onChange={(event) => updateKey((key) => { key.hint = event.target.value; })} /></Field>
                     </div>
-                    <div className="grid grid-cols-2 gap-stack">
-                      <Field label="Style type">
-                        <Select value={selectedKey.style ?? ""} onChange={(event) => updateKey((key) => { key.style = event.target.value; })}>
-                          {Object.keys(project.keyStyles).map((id) => <option key={id} value={id}>{id}</option>)}
-                        </Select>
-                      </Field>
-                      <Field label="Click action">
-                        <div className="whitespace-normal break-words rounded border border-border bg-muted/20 px-2 py-1.5 text-2xs" title={actionLabel(selectedKey.click, libs)}>{actionLabel(selectedKey.click, libs)}</div>
-                      </Field>
-                    </div>
-                    <div className="grid grid-cols-2 gap-stack">
-                      <Field label="Width %"><Input type="number" value={selectedKey.width} onChange={(event) => updateKey((key) => { key.width = Number(event.target.value); })} /></Field>
-                      <Field label="Height px"><Input type="number" value={selectedKey.height ?? 0} onChange={(event) => updateKey((key) => { key.height = Number(event.target.value); })} /></Field>
-                    </div>
 
-                    <details className="rounded border border-border bg-muted/10 p-2">
-                      <summary className="cursor-pointer text-2xs font-medium">Key color overrides{colorOverrideCount > 0 ? ` · ${colorOverrideCount}` : ""}</summary>
-                      <p className="mt-1 text-3xs text-muted-foreground">来自导入的键级颜色覆盖，优先级高于 style type；留空则继承 style。</p>
-                      <div className="mt-2 grid grid-cols-2 gap-stack">
-                        {KEY_COLOR_FIELDS.map(([field, label]) => (
-                          <Field key={field} label={label}>
-                            <div className="flex gap-1">
+                    <div className="space-y-2 border-t border-border pt-2">
+                      <div className="flex flex-wrap items-center gap-stack">
+                        <Label>样式与尺寸</Label>
+                        <span className="text-3xs text-muted-foreground">style type 决定基础外观；键级颜色覆盖优先级更高</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-stack sm:grid-cols-2">
+                        <Field label="Style type">
+                          <Select value={selectedKey.style ?? ""} onChange={(event) => updateKey((key) => { key.style = event.target.value; })}>
+                            {Object.keys(project.keyStyles).map((id) => <option key={id} value={id}>{id}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="宽度权重">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-control-sm w-7 px-0 text-3xs"
+                                onClick={() => updateKey((key) => { key.width = Math.max(0.1, (key.width || 10) - 1); })}
+                              >−</Button>
                               <Input
-                                className="h-control-sm"
-                                value={selectedKey[field] ?? ""}
-                                placeholder="inherit"
-                                onChange={(event) => updateKey((key) => {
+                                className="h-control-sm text-center"
+                                type="number"
+                                min={0.1}
+                                step={1}
+                                value={selectedKey.width}
+                                onChange={(event) => {
                                   const value = event.target.value;
-                                  if (value) key[field] = value;
-                                  else delete key[field];
-                                })}
+                                  if (!value) return;
+                                  updateKey((key) => { key.width = Math.max(0.1, Number(value)); });
+                                }}
                               />
-                              {selectedKey[field] ? (
-                                <Button size="sm" variant="ghost" className="h-control-sm px-1 text-destructive" onClick={() => updateKey((key) => { delete key[field]; })}>×</Button>
-                              ) : null}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-control-sm w-7 px-0 text-3xs"
+                                onClick={() => updateKey((key) => { key.width = Math.round((key.width || 10) + 1); })}
+                              >+</Button>
                             </div>
-                          </Field>
-                        ))}
+                            <div className="flex flex-wrap gap-1">
+                              {([["0.5×", 5], ["1×", 10], ["1.5×", 15], ["2×", 20], ["3×", 30]] as const).map(([label, weight]) => (
+                                <button
+                                  key={label}
+                                  type="button"
+                                  aria-pressed={selectedKey.width === weight}
+                                  className={`rounded-control border px-1.5 py-0.5 text-3xs transition-colors ${selectedKey.width === weight ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
+                                  onClick={() => updateKey((key) => { key.width = weight; })}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <p className="text-3xs text-muted-foreground">10 = 1 个标准键；渲染时按行自动归一化。</p>
+                          </div>
+                        </Field>
                       </div>
-                    </details>
 
-                    <div className="space-y-1">
-                      <Label>Popup items</Label>
-                      <p className="text-3xs text-muted-foreground">每项是上屏文本；支持增删、排序。popup 非空时 long_click 不会触发。</p>
-                      {selectedKey.popup?.length ? (
-                        <div className="space-y-1">
-                          {selectedKey.popup.map((item, index, items) => (
-                            <div key={`${item}-${index}`} className="flex items-center gap-1">
-                              <Input value={item} onChange={(event) => updateKey((key) => { key.popup = (key.popup ?? []).map((value, i) => (i === index ? event.target.value : value)); })} />
-                              <Button size="sm" variant="ghost" className="h-control-sm px-1" disabled={index === 0} onClick={() => updateKey((key) => {
-                                const next = [...(key.popup ?? [])];
-                                [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                                key.popup = next;
-                              })}><ArrowUp /></Button>
-                              <Button size="sm" variant="ghost" className="h-control-sm px-1" disabled={index === items.length - 1} onClick={() => updateKey((key) => {
-                                const next = [...(key.popup ?? [])];
-                                [next[index + 1], next[index]] = [next[index], next[index + 1]];
-                                key.popup = next;
-                              })}><ArrowDown /></Button>
-                              <Button size="sm" variant="ghost" className="h-control-sm px-1 text-destructive" onClick={() => updateKey((key) => { key.popup = (key.popup ?? []).filter((_, i) => i !== index); })}>×</Button>
-                            </div>
-                          ))}
+                      <details className="rounded border border-border bg-muted/10 p-2">
+                        <summary className="cursor-pointer text-2xs font-medium">Key color overrides{colorOverrideCount > 0 ? ` · ${colorOverrideCount}` : ""}</summary>
+                        <p className="mt-1 text-3xs text-muted-foreground">来自导入的键级颜色覆盖，优先级高于 style type；留空则继承 style。</p>
+                        <div className="mt-2 grid grid-cols-2 gap-stack">
+                          {KEY_COLOR_FIELDS.map(([field, label]) => {
+                            const current = selectedKey[field] ?? "";
+                            const normalized = toTrimeColor(current);
+                            const matched = colorOptions.find((option) => option.value.toLowerCase() === normalized.toLowerCase());
+                            const selectValue = current ? (matched?.value ?? current) : "";
+                            const swatch = colorSwatch(current, (token) => tokenValue(themeCard, token));
+                            return (
+                              <Field key={field} label={label}>
+                                <div className="flex items-center gap-1">
+                                  <Select
+                                    className="h-control-sm"
+                                    value={selectValue}
+                                    onChange={(event) => updateKey((key) => {
+                                      const value = event.target.value;
+                                      if (value) key[field] = value;
+                                      else delete key[field];
+                                    })}
+                                  >
+                                    <option value="">inherit</option>
+                                    {current && !matched ? <option value={current}>当前 · {current}</option> : null}
+                                    {colorOptions.map((option) => (
+                                      <option key={option.token} value={option.value}>{option.token} · {option.value}</option>
+                                    ))}
+                                  </Select>
+                                  <span
+                                    className="h-control-sm w-5 shrink-0 rounded border border-border"
+                                    style={{ background: current ? swatch : "transparent" }}
+                                    title={current || "继承 style"}
+                                  />
+                                  {current ? (
+                                    <Button size="sm" variant="ghost" className="h-control-sm px-1 text-destructive" onClick={() => updateKey((key) => { delete key[field]; })}>×</Button>
+                                  ) : null}
+                                </div>
+                              </Field>
+                            );
+                          })}
                         </div>
-                      ) : <p className="text-2xs text-muted-foreground">没有 popup。</p>}
-                      <div className="flex gap-1">
-                        <Input value={newPopup} placeholder="新增 popup 文本（可粘贴多项）" onChange={(event) => setNewPopup(event.target.value)} onKeyDown={(event) => {
-                          if (event.key !== "Enter" || !newPopup) return;
-                          updateKey((key) => { key.popup = [...(key.popup ?? []), newPopup]; });
-                          setNewPopup("");
-                        }} />
-                        <Button size="sm" variant="outline" className="h-control" disabled={!newPopup} onClick={() => {
-                          updateKey((key) => { key.popup = [...(key.popup ?? []), newPopup]; });
-                          setNewPopup("");
-                        }}>+ Add</Button>
-                      </div>
-                      <Button size="sm" variant="outline" className="h-control-sm w-full" onClick={() => {
-                        const items = newPopup.split(/[\n,，、\s]+/).filter(Boolean);
-                        if (!items.length) return;
-                        updateKey((key) => { key.popup = [...(key.popup ?? []), ...items]; });
-                        setNewPopup("");
-                      }}>Bulk add pasted text</Button>
+                      </details>
                     </div>
 
-                    {positionActions}
+                    <div className="space-y-2 border-t border-border pt-2">
+                      <div className="flex flex-wrap items-center gap-stack">
+                        <Label>行为</Label>
+                        <span className="text-3xs text-muted-foreground">选择目标行为，再编辑或插入内容</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {BEHAVIORS.map(([behavior, label]) => {
+                          const action = targetOf(selectedKey, behavior);
+                          const active = targetBehavior === behavior;
+                          return (
+                            <span
+                              key={behavior}
+                              className={`inline-flex items-center overflow-hidden rounded-control border text-3xs transition-colors ${active ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground"}`}
+                            >
+                              <button
+                                type="button"
+                                aria-pressed={active}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 transition-colors ${active ? "" : "hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
+                                title={actionLabel(action, libs)}
+                                onClick={() => setTargetBehavior(behavior)}
+                              >
+                                {label}
+                                <span className={`size-1.5 rounded-full ${action ? "bg-success" : "bg-border"}`} />
+                              </button>
+                              {action ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Clear ${label}`}
+                                  title={`Clear ${label}`}
+                                  className="border-l border-border/60 px-1 py-0.5 text-4xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                  onClick={() => setBehavior(behavior, undefined)}
+                                >
+                                  Clear
+                                </button>
+                              ) : null}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
+                        <div className="rounded border border-primary/40 bg-primary/5 p-2">
+                          <ActionField action={targetOf(selectedKey, targetBehavior)} libs={libs} pageTargets={group} onChange={(action) => setBehavior(targetBehavior, action)} />
+                        </div>
+                        <Selector
+                          libs={libs}
+                          pageTargets={group}
+                          targetBehavior={targetBehavior}
+                          onAssign={(action) => {
+                            if (!selected) return setMessage("先在预览或行编辑器中点击一个键");
+                            setBehavior(targetBehavior, action);
+                          }}
+                        />
+                      </div>
+
+                      <div className="space-y-1 border-t border-border pt-2">
+                        <Label>Popup（长按候选）</Label>
+                        <p className="text-3xs text-muted-foreground">每项是上屏文本；支持增删、排序。popup 非空时 long_click 不会触发。</p>
+                        {selectedKey.popup?.length ? (
+                          <div className="space-y-1">
+                            {selectedKey.popup.map((item, index, items) => (
+                              <div key={`${item}-${index}`} className="flex items-center gap-1">
+                                <Input value={item} onChange={(event) => updateKey((key) => { key.popup = (key.popup ?? []).map((value, i) => (i === index ? event.target.value : value)); })} />
+                                <Button size="sm" variant="ghost" className="h-control-sm px-1" disabled={index === 0} onClick={() => updateKey((key) => {
+                                  const next = [...(key.popup ?? [])];
+                                  [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                                  key.popup = next;
+                                })}><ArrowUp /></Button>
+                                <Button size="sm" variant="ghost" className="h-control-sm px-1" disabled={index === items.length - 1} onClick={() => updateKey((key) => {
+                                  const next = [...(key.popup ?? [])];
+                                  [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                                  key.popup = next;
+                                })}><ArrowDown /></Button>
+                                <Button size="sm" variant="ghost" className="h-control-sm px-1 text-destructive" onClick={() => updateKey((key) => { key.popup = (key.popup ?? []).filter((_, i) => i !== index); })}>×</Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <p className="text-2xs text-muted-foreground">没有 popup。</p>}
+                        <div className="flex gap-1">
+                          <Input value={newPopup} placeholder="新增 popup 文本（可粘贴多项）" onChange={(event) => setNewPopup(event.target.value)} onKeyDown={(event) => {
+                            if (event.key !== "Enter" || !newPopup) return;
+                            updateKey((key) => { key.popup = [...(key.popup ?? []), newPopup]; });
+                            setNewPopup("");
+                          }} />
+                          <Button size="sm" variant="outline" className="h-control" disabled={!newPopup} onClick={() => {
+                            updateKey((key) => { key.popup = [...(key.popup ?? []), newPopup]; });
+                            setNewPopup("");
+                          }}>+ Add</Button>
+                        </div>
+                        <Button size="sm" variant="outline" className="h-control-sm w-full" onClick={() => {
+                          const items = newPopup.split(/[\n,，、\s]+/).filter(Boolean);
+                          if (!items.length) return;
+                          updateKey((key) => { key.popup = [...(key.popup ?? []), ...items]; });
+                          setNewPopup("");
+                        }}>Bulk add pasted text</Button>
+                      </div>
+                    </div>
                   </>
                   )
                 ) : <p className="text-xs text-muted-foreground">在预览或行编辑器中点击一个键。</p>}
               </TabsContent>
 
-              <TabsContent value="behavior" className="mt-0 space-y-2">
-                {selectedKey ? (
-                  selectedPlaceholder ? (
-                    <p className="text-xs text-muted-foreground">占位符没有行为；Trime 不会为它创建按键，只保留宽度。</p>
-                  ) : (
-                  <>
-                    <p className="text-2xs text-muted-foreground">目标行为：<Badge variant="success">{targetBehavior}</Badge>，点下方行切换目标；用 Insert action 写入。</p>
-                    {BEHAVIORS.map(([behavior, label]) => (
-                      <div key={behavior} className={`rounded border p-2 ${targetBehavior === behavior ? "border-primary bg-primary/5" : "border-border"}`}>
-                        <button type="button" className="mb-1 flex w-full items-center justify-between text-2xs" onClick={() => setTargetBehavior(behavior)}>
-                          <span>{label}</span>
-                          <span className="whitespace-normal break-words text-right text-muted-foreground" title={actionLabel(targetOf(selectedKey, behavior), libs)}>{actionLabel(targetOf(selectedKey, behavior), libs)}</span>
-                        </button>
-                        <ActionField action={targetOf(selectedKey, behavior)} libs={libs} pageTargets={group} onChange={(action) => setBehavior(behavior, action)} />
-                      </div>
-                    ))}
-                  </>
-                  )
-                ) : <p className="text-xs text-muted-foreground">先选择一个键。</p>}
-              </TabsContent>
-
-              <TabsContent value="style" className="mt-0 space-y-2">
-                <p className="text-2xs text-muted-foreground">键位默认引用 style type；导入的键级颜色覆盖会保留并优先输出，可在 Key 页查看或清除。</p>
-                {Object.values(project.keyStyles).map((style) => (
-                  <div key={style.id} className="flex items-center gap-stack rounded border border-border bg-muted/20 px-2 py-1 text-2xs">
-                    <Badge variant="muted">{style.id}</Badge>
-                    <span className="text-muted-foreground">bg</span><code>{style.background}</code>
-                    <span className="text-muted-foreground">text</span><code>{style.text}</code>
-                    <span className="ml-auto text-muted-foreground">→ Themes</span>
-                  </div>
-                ))}
-              </TabsContent>
             </div>
           </Tabs>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   );

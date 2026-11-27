@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
-import { Eraser } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,11 +21,10 @@ type Props = {
   /** Project pages reachable from a Page action. Catalog presets are never targets. */
   pageTargets: LayoutPreset[];
   targetBehavior: string;
-  setTargetBehavior: (value: string) => void;
-  onAssign: (action: ActionRef | undefined) => void;
+  onAssign: (action: ActionRef) => void;
 };
 
-export function Selector({ libs, pageTargets, targetBehavior, setTargetBehavior, onAssign }: Props) {
+export function Selector({ libs, pageTargets, targetBehavior, onAssign }: Props) {
   const [tab, setTab] = useState("characters");
   const [setId, setSetId] = useState(CHARACTER_SETS[0].id);
   const [query, setQuery] = useState("");
@@ -52,24 +49,7 @@ export function Selector({ libs, pageTargets, targetBehavior, setTargetBehavior,
       <div className="mb-2 flex items-center gap-stack">
         <span className="text-xs font-medium">Insert action</span>
         <Badge variant="success">{targetBehavior}</Badge>
-        <span className="ml-auto text-3xs text-muted-foreground">先选键，再点目标行为与内容</span>
-      </div>
-
-      <div className="mb-2 flex flex-wrap gap-1">
-        {BEHAVIORS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={targetBehavior === id}
-            className={`rounded-control border px-1.5 py-0.5 text-3xs transition-colors ${targetBehavior === id ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:bg-surface-hover active:bg-surface-active hover:text-foreground"}`}
-            onClick={() => setTargetBehavior(id)}
-          >
-            {label}
-          </button>
-        ))}
-        <Button size="sm" variant="ghost" className="ml-auto h-control-xs px-1 text-3xs" onClick={() => onAssign(undefined)}>
-          <Eraser className="size-3" /> Clear
-        </Button>
+        <span className="ml-auto text-3xs text-muted-foreground">选好目标行为后，点内容写入</span>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>

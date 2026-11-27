@@ -110,12 +110,35 @@ describe("lossless import", () => {
     expect(yaml.fallback_colors.custom_fallback).toBe("custom_top");
     expect(yaml.preset_keyboards.default.custom_layout).toBe(5);
     expect(yaml.preset_keyboards.default.lock).toBe(true);
-    expect(yaml.preset_keyboards.default.keys[0].width).toBe(20);
+    expect(yaml.preset_keyboards.default.keys[0].width).toBe(50);
     expect(yaml.preset_keyboards.default.keys[0].key_back_color).toBe("bh1");
     expect(yaml.preset_keyboards.default.keys[0].key_text_color).toBe("th1");
     expect(yaml.preset_keyboards.default.keys[0].custom_key).toBe(6);
     expect(yaml.preset_keyboards.default.keys[1].key_text_size).toBe(18);
     expect(yaml.preset_keys.macro_hello.custom_preset).toBe(7);
+  });
+
+  it("maps a row-start key height to the row height", () => {
+    const source = `
+name: Half Height
+preset_color_schemes:
+  light: { back_color: 0xFF000000 }
+  dark: { back_color: 0xFF111111 }
+preset_keyboards:
+  default:
+    height: 48
+    keys:
+      - { click: a, width: 100, height: 26 }
+      - { click: b, width: 100 }
+`;
+    const result = importTrimeYaml(source, "half-height.yaml");
+    const layout = result.project.layouts.find((item) => item.id === "default");
+    expect(layout?.rows[0]?.height).toBe(26);
+    expect(layout?.rows[1]?.height).toBe(48);
+    expect(layout?.rows[0]?.keys[0]?.height).toBeUndefined();
+    const yaml = YAML.parse(compileBundle(result.project));
+    expect(yaml.preset_keyboards.default.keys[0].height).toBe(26);
+    expect(yaml.preset_keyboards.default.keys[1].height).toBe(48);
   });
 
   it("resolves external includes from multi-file input", () => {

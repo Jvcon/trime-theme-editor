@@ -1,6 +1,6 @@
 import { BUILTIN_PRESETS, DEFAULT_LIQUID, DEFAULT_PREEDIT, DEFAULT_TOOLBAR, DEFAULT_WINDOW, KEY_STYLES } from "./presets";
 import { LAYOUT_RULES } from "./devicePresets";
-import type { ActionRef, ChromeConfig, ChromePatch, KeySlot, KeyStyle, LayoutPreset, LayoutRole, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
+import type { ActionRef, ChromeConfig, ChromePatch, KeySlot, KeyStyle, LayoutPreset, LayoutRole, LayoutRow, LiquidConfig, MacroPreset, PresetLibraries, ProjectBundle, ThemeCardPreset, ThemeSelection } from "./types";
 
 function mergeById<T extends { id: string }>(...groups: T[][]): T[] {
   const seen = new Set<string>();
@@ -87,16 +87,66 @@ export function normalizeChrome(input: ChromePatch | undefined): ChromeConfig {
   };
 }
 
-export function fitRowWidths(row: { keys: Array<{ width: number }> }): void {
-  const total = row.keys.reduce((sum, key) => sum + Math.max(0, key.width || 0), 0);
-  if (row.keys.length === 0) return;
-  if (total <= 0) {
-    for (const key of row.keys) key.width = Number((100 / row.keys.length).toFixed(3));
-    return;
+type WidthRow = { keys: Array<{ width: number }> };
+
+/**
+ * Key widths are relative weights: 10 means one standard key. Trime itself
+ * interprets a width as a share of 100, so rows are normalized when previewing
+ * and compiling, not while editing.
+ */
+export function rowWeightTotal(row: WidthRow): number {
+  return row.keys.reduce((sum, key) => sum + Math.max(0, key.width || 0), 0);
+}
+
+/** Visual percentage of each key in a row. Zero-weight rows fall back to equal shares. */
+export function rowPercentages(row: WidthRow): number[] {
+  if (row.keys.length === 0) return [];
+  const total = rowWeightTotal(row);
+  if (total <= 0) return row.keys.map(() => 100 / row.keys.length);
+  return row.keys.map((key) => (Math.max(0, key.width || 0) / total) * 100);
+}
+
+/**
+ * Largest-remainder split of 100 into integer percentages. Used by the optional
+ * "integer widths" export mode and by the row calibration action.
+ */
+export function integerRowWidths(row: WidthRow): number[] {
+  const percentages = rowPercentages(row);
+  if (percentages.length === 0) return [];
+  // More than 100 slots cannot all get an integer share of 100.
+  if (percentages.length > 100) return percentages.map((value) => Number(value.toFixed(3)));
+
+  const widths = percentages.map((value) => Math.max(0, Math.floor(value)));
+  let remainder = 100 - widths.reduce((sum, value) => sum + value, 0);
+  const order = percentages
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  let cursor = 0;
+  while (remainder > 0 && order.length > 0) {
+    widths[order[cursor % order.length].index] += 1;
+    remainder -= 1;
+    cursor += 1;
   }
-  for (const key of row.keys) {
-    key.width = Number((((key.width || 0) / total) * 100).toFixed(3));
+
+  // Every slot needs a visible width; borrow from the widest slot.
+  for (let index = 0; index < widths.length; index += 1) {
+    if (widths[index] > 0) continue;
+    let donor = 0;
+    for (let other = 1; other < widths.length; other += 1) {
+      if (widths[other] > widths[donor]) donor = other;
+    }
+    if (widths[donor] > 1) {
+      widths[donor] -= 1;
+      widths[index] = 1;
+    }
   }
+  return widths;
+}
+
+/** Round a row's weights so the row is an integer split of 100. */
+export function fitRowWidths(row: WidthRow): void {
+  const widths = integerRowWidths(row);
+  row.keys.forEach((key, index) => { key.width = widths[index]; });
 }
 
 export function fitLayoutRows(layout: LayoutPreset): void {
@@ -104,27 +154,34 @@ export function fitLayoutRows(layout: LayoutPreset): void {
 }
 
 export function reflowLayoutRows(layout: LayoutPreset, target = 100): void {
-  const keys = layout.rows.flatMap((row) => row.keys);
+  // Flatten keys using their visual share, then repack into 100% rows.
+  const keys: Array<{ key: KeySlot; width: number }> = [];
+  for (const row of layout.rows) {
+    const percentages = rowPercentages(row);
+    row.keys.forEach((key, index) => {
+      keys.push({ key, width: Math.max(0.01, percentages[index]) });
+    });
+  }
   const height = layout.rows.find((row) => row.height)?.height ?? 52;
-  const rows: LayoutPreset["rows"] = [];
-  let current = { height, keys: [] as LayoutPreset["rows"][number]["keys"] };
+  const rows: LayoutRow[] = [];
+  let current: LayoutRow = { height, keys: [] };
   let used = 0;
-  for (const key of keys) {
-    const width = Math.max(0.01, key.width || 10);
-    if (current.keys.length > 0 && used + width > target + 0.5) {
+  for (const item of keys) {
+    if (current.keys.length > 0 && used + item.width > target + 0.5) {
       fitRowWidths(current);
       rows.push(current);
       current = { height, keys: [] };
       used = 0;
     }
-    current.keys.push(key);
-    used += width;
+    item.key.width = item.width;
+    current.keys.push(item.key);
+    used += item.width;
   }
   if (current.keys.length > 0) {
     fitRowWidths(current);
     rows.push(current);
   }
-  if (rows.length === 0) rows.push({ height, keys: [{ style: "default", width: 100, click: { kind: "char", value: "a" }, label: "A" }] });
+  if (rows.length === 0) rows.push({ height, keys: [{ style: "default", width: 10, click: { kind: "char", value: "a" }, label: "A" }] });
   layout.rows = rows;
 }
 
@@ -774,11 +831,11 @@ export function newLayout(name: string): LayoutPreset {
       {
         height: 52,
         keys: [
-          { style: "default", width: 20, click: { kind: "char", value: "q" }, label: "Q" },
-          { style: "default", width: 20, click: { kind: "char", value: "w" }, label: "W" },
-          { style: "default", width: 20, click: { kind: "char", value: "e" }, label: "E" },
-          { style: "default", width: 20, click: { kind: "char", value: "r" }, label: "R" },
-          { style: "default", width: 20, click: { kind: "char", value: "t" }, label: "T" },
+          { style: "default", width: 10, click: { kind: "char", value: "q" }, label: "Q" },
+          { style: "default", width: 10, click: { kind: "char", value: "w" }, label: "W" },
+          { style: "default", width: 10, click: { kind: "char", value: "e" }, label: "E" },
+          { style: "default", width: 10, click: { kind: "char", value: "r" }, label: "R" },
+          { style: "default", width: 10, click: { kind: "char", value: "t" }, label: "T" },
         ],
       },
     ],

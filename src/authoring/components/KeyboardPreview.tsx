@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { KeySlot, LayoutPreset, Orientation, PresetLibraries, ProjectBundle, ProjectMetrics } from "../types";
-import { actionLabel, defaultChrome, isPlaceholder, keyStyleColors, tokenValue } from "../utils";
+import { actionLabel, defaultChrome, isPlaceholder, keyStyleColors, rowPercentages, tokenValue } from "../utils";
 
 export type KeyPosition = { row: number; key: number };
 export type DropPosition = { row: number; index: number };
@@ -103,7 +103,9 @@ export function KeyboardPreview({
             <p className="p-2 text-2xs" style={{ color: colors.textMuted }}>这个布局还没有行。</p>
           ) : null}
 
-          {layout.rows.map((row, rowIndex) => (
+          {layout.rows.map((row, rowIndex) => {
+            const percentages = rowPercentages(row);
+            return (
             <div
               key={rowIndex}
               className={`mb-0.5 flex gap-0.5 last:mb-0 ${
@@ -124,6 +126,7 @@ export function KeyboardPreview({
                 <PreviewKey
                   key={keyIndex}
                   slot={key}
+                  widthPercent={percentages[keyIndex] ?? 100}
                   height={rowHeight(row, key)}
                   colors={keyStyleColors(card, project.keyStyles, key.style)}
                   interactive={interactive}
@@ -150,13 +153,15 @@ export function KeyboardPreview({
                 />
               ))}
             </div>
-          ))}
+            );
+          })}
 
           {popup && popupRow && popupKey?.popup?.length ? (() => {
             let top = 4;
             for (let index = 0; index < popup.row; index += 1) top += rowHeight(layout.rows[index]) + 2;
             top += rowHeight(popupRow, popupKey) + 2;
-            const left = popupRow.keys.slice(0, popup.key).reduce((sum, item) => sum + item.width, 0) + popupKey.width / 2;
+            const popupPercentages = rowPercentages(popupRow);
+            const left = popupPercentages.slice(0, popup.key).reduce((sum, value) => sum + value, 0) + (popupPercentages[popup.key] ?? 0) / 2;
             const popupWidth = Math.max(32, metrics.popupWidth ?? 44);
             const popupHeight = Math.max(28, metrics.popupKeyHeight ?? 48);
             const popupTextSize = metrics.popupTextSize ?? 22;
@@ -185,10 +190,11 @@ export function KeyboardPreview({
 }
 
 function PreviewKey({
-  slot, height, colors, interactive, selected, dragging, dropBefore, actionText,
+  slot, widthPercent, height, colors, interactive, selected, dragging, dropBefore, actionText,
   onSelect, onPopup, onDragStart, onDragEnd, onDragOver, onDrop,
 }: {
   slot: KeySlot;
+  widthPercent: number;
   height: number;
   colors: { background: string; text: string; border: string; symbol: string };
   interactive: boolean;
@@ -212,7 +218,7 @@ function PreviewKey({
   const spacer = isPlaceholder(slot);
 
   if (spacer && !interactive) {
-    return <span aria-hidden className="block min-w-0" style={{ width: `${slot.width}%`, height }} />;
+    return <span aria-hidden className="block min-w-0" style={{ width: `${widthPercent}%`, height }} />;
   }
 
   const start = () => {
@@ -236,7 +242,7 @@ function PreviewKey({
       aria-hidden={interactive ? undefined : true}
       className={`relative min-w-0 overflow-hidden rounded-md border px-1 text-caption ${selected ? "ring-2 ring-primary" : ""} ${dragging ? "opacity-40" : ""} ${dropBefore ? "border-l-2 border-primary" : ""} ${spacer ? "border-dashed opacity-60" : ""}`}
       style={{
-        width: `${slot.width}%`,
+        width: `${widthPercent}%`,
         height,
         background: spacer ? "transparent" : colors.background,
         color: spacer ? "transparent" : colors.text,

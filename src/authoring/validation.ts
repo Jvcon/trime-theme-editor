@@ -1,5 +1,4 @@
 import type { ProjectBundle } from "./types";
-import { LAYOUT_RULES } from "./devicePresets";
 import { groupLayouts, isPlaceholder, libraries } from "./utils";
 
 export type IssueArea = "theme" | "layouts" | "interface" | "devices" | "export";
@@ -86,9 +85,9 @@ export function validateProject(project: ProjectBundle): Issue[] {
   // schema-binding targets. Pruning keeps the bundle small, so this is safe.
   for (const layout of project.layouts) {
     layout.rows.forEach((row, rowIndex) => {
-      const sum = row.keys.reduce((total, key) => total + (key.width || 0), 0);
-      if (Math.abs(sum - 100) > LAYOUT_RULES.rowWidthTolerance) {
-        issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行宽度合计 ${sum.toFixed(1)}%，不是 100%（可用 Fit 100% 修正）` });
+      const sum = row.keys.reduce((total, key) => total + Math.max(0, key.width || 0), 0);
+      if (row.keys.length > 0 && sum <= 0) {
+        issues.push({ level: "warning", area: "layouts", message: `${layout.name} 第 ${rowIndex + 1} 行没有有效的键宽权重` });
       }
       row.keys.forEach((key, keyIndex) => {
         if (isPlaceholder(key)) return;

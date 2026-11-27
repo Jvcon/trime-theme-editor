@@ -289,6 +289,11 @@ export type ProjectBundle = {
   theme: ThemeSelection;
   /** Preview direction. The compiled light/dark schemes always use theme.light/theme.dark. */
   variant: Variant;
+  /**
+   * How compiled key widths are rounded. Widths are relative weights (10 = one
+   * standard key) normalized per row; undefined means exact 3-decimal output.
+   */
+  exportWidthPrecision?: "exact" | "integer";
   /** Project-scoped custom theme cards created by copy / new / edit. */
   customThemeCards?: ThemeCardPreset[];
   keyStyles: Record<string, KeyStyle>;

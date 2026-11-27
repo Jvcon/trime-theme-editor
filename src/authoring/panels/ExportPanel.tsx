@@ -19,6 +19,7 @@ type Props = {
   project: ProjectBundle;
   snapshots: Snapshot[];
   setMessage: (message: string) => void;
+  mutate: (fn: (draft: ProjectBundle) => void) => void;
 };
 
 type DriftFile = {
@@ -27,7 +28,7 @@ type DriftFile = {
   canonical: string;
 };
 
-export function ExportPanel({ project, snapshots, setMessage }: Props) {
+export function ExportPanel({ project, snapshots, setMessage, mutate }: Props) {
   const [copied, setCopied] = useState(false);
   const [compareKey, setCompareKey] = useState("");
   const [diffView, setDiffView] = useState<"yaml" | "structured">("yaml");
@@ -161,6 +162,17 @@ export function ExportPanel({ project, snapshots, setMessage }: Props) {
               {deviceLabel(item, true)}
             </option>
           ))}
+        </Select>
+        <Select
+          className="h-control-sm w-44"
+          value={project.exportWidthPrecision ?? "exact"}
+          onChange={(event) => mutate((draft) => {
+            draft.exportWidthPrecision = event.target.value === "integer" ? "integer" : "exact";
+          })}
+          title="键宽按行归一化后如何写入 YAML"
+        >
+          <option value="exact">宽度：精确小数</option>
+          <option value="integer">宽度：整数（合计 100）</option>
         </Select>
         <Badge variant={errors.length ? "danger" : warnings.length ? "warning" : "success"}>
           {errors.length ? `${errors.length} 个错误` : warnings.length ? `${warnings.length} 个警告` : "项目级检查通过"}

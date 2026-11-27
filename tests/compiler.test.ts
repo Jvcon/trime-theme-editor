@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { blankBundle, compileBundle, templateBundle, stringifyTrime } from "../src/authoring/compiler";
-import { normalizeBundle } from "../src/authoring/utils";
+import { normalizeBundle, reflowLayoutRows } from "../src/authoring/utils";
 
 describe("compileBundle", () => {
   it("is deterministic for the same bundle", () => {
@@ -30,12 +30,81 @@ describe("compileBundle", () => {
   it("compiles spacer slots as invisible width-only gaps", () => {
     const bundle = templateBundle();
     const layout = bundle.layouts[0];
-    layout.rows[0].keys.push({ kind: "placeholder", width: 6.789 });
+    layout.rows[0] = {
+      height: 52,
+      keys: [
+        { kind: "placeholder", width: 6.789 },
+        { style: "default", width: 93.211, click: { kind: "char", value: "a" }, label: "A" },
+      ],
+    };
     const yaml = YAML.parse(compileBundle(bundle)) as {
       preset_keyboards: Record<string, { keys: Array<Record<string, unknown>> }>;
     };
     const spacer = yaml.preset_keyboards[layout.id].keys.find((key) => key.width === 6.789);
     expect(spacer).toEqual({ width: 6.789 });
+  });
+
+  it("normalizes relative row weights to 100%", () => {
+    const bundle = templateBundle();
+    const layout = bundle.layouts[0];
+    layout.rows = [{
+      height: 52,
+      keys: [
+        { style: "default", width: 10, click: { kind: "char", value: "a" }, label: "A" },
+        { style: "default", width: 10, click: { kind: "char", value: "b" }, label: "B" },
+      ],
+    }];
+    const yaml = YAML.parse(compileBundle(bundle)) as {
+      preset_keyboards: Record<string, { keys: Array<Record<string, unknown>> }>;
+    };
+    expect(yaml.preset_keyboards[layout.id].keys.map((key) => key.width)).toEqual([50, 50]);
+  });
+
+  it("keeps exact equal widths and an optional integer export", () => {
+    const bundle = templateBundle();
+    const layout = bundle.layouts[0];
+    layout.rows = [{
+      height: 52,
+      keys: "abcdefg".split("").map((value) => ({
+        style: "default",
+        width: 10,
+        click: { kind: "char" as const, value },
+        label: value.toUpperCase(),
+      })),
+    }];
+    const exact = YAML.parse(compileBundle(bundle)) as {
+      preset_keyboards: Record<string, { keys: Array<Record<string, unknown>> }>;
+    };
+    const exactWidths = exact.preset_keyboards[layout.id].keys.map((key) => Number(key.width));
+    expect(exactWidths.reduce((sum, value) => sum + value, 0)).toBeCloseTo(100, 3);
+    expect(Math.max(...exactWidths) - Math.min(...exactWidths)).toBeLessThan(0.01);
+
+    bundle.exportWidthPrecision = "integer";
+    const integer = YAML.parse(compileBundle(bundle)) as {
+      preset_keyboards: Record<string, { keys: Array<Record<string, unknown>> }>;
+    };
+    const integerWidths = integer.preset_keyboards[layout.id].keys.map((key) => Number(key.width));
+    expect(integerWidths.every(Number.isInteger)).toBe(true);
+    expect(integerWidths.reduce((sum, value) => sum + value, 0)).toBe(100);
+  });
+
+  it("reflows by visual share and keeps integer weights", () => {
+    const bundle = templateBundle();
+    const layout = bundle.layouts[0];
+    layout.rows = [{
+      height: 52,
+      keys: "abcdefg".split("").map((value) => ({
+        style: "default",
+        width: 10,
+        click: { kind: "char" as const, value },
+        label: value.toUpperCase(),
+      })),
+    }];
+    reflowLayoutRows(layout);
+    expect(layout.rows).toHaveLength(1);
+    const widths = layout.rows[0].keys.map((key) => key.width);
+    expect(widths.every(Number.isInteger)).toBe(true);
+    expect(widths.reduce((sum, value) => sum + value, 0)).toBe(100);
   });
 
   it("normalizes legacy empty-click spacers into placeholders", () => {

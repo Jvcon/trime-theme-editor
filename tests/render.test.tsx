@@ -75,7 +75,7 @@ describe("AuthoringApp", () => {
       });
     });
     if (!position) throw new Error("default layout has no placeholder");
-    const html = renderToStaticMarkup(
+    const render = (rightTab: string) => renderToStaticMarkup(
       <LayoutsPanel
         project={project}
         libs={libraries(project)}
@@ -88,14 +88,49 @@ describe("AuthoringApp", () => {
         onSelectKey={noop}
         popup={null}
         onPopupKey={noop}
+        rightTab={rightTab}
+        setRightTab={noop}
+        onMoveKey={noop}
+      />,
+    );
+    const keyHtml = render("key");
+    expect(keyHtml).toContain("只占宽度，不渲染按键");
+    expect(keyHtml).not.toContain("Label symbol");
+    const pageHtml = render("page");
+    expect(pageHtml).toContain("Row editor");
+    expect(pageHtml).toContain("Add placeholder");
+    expect(pageHtml).toContain(">布局</button>");
+    expect(pageHtml).toContain(">键</button>");
+    expect(pageHtml).not.toContain(">行为</button>");
+    expect(pageHtml).not.toContain(">样式</button>");
+  });
+
+  it("offers theme card colours for key colour overrides", () => {
+    const project = templateBundle();
+    const layout = project.layouts[0];
+    const html = renderToStaticMarkup(
+      <LayoutsPanel
+        project={project}
+        libs={libraries(project)}
+        activeLayoutId={layout.id}
+        setActiveLayoutId={noop}
+        mutate={noop}
+        editLayout={noop}
+        setMessage={noop}
+        selected={{ row: 0, key: 0 }}
+        onSelectKey={noop}
+        popup={null}
+        onPopupKey={noop}
         rightTab="key"
         setRightTab={noop}
         onMoveKey={noop}
       />,
     );
-    expect(html).toContain("Add placeholder");
-    expect(html).toContain("只占宽度，不渲染按键");
-    expect(html).not.toContain("Label symbol");
+    expect(html).toContain("Key color overrides");
+    expect(html).toContain("surface · 0xFF44475A");
+    expect(html).toContain("pressed.surface · 0xFFBD93F9");
+    expect(html).toContain("宽度权重");
+    expect(html).toContain("10 = 1 个标准键");
   });
 
   it("offers only project pages as Page action targets", () => {
@@ -256,9 +291,11 @@ describe("AuthoringApp", () => {
 
   it("renders schema validation and drift comparison in the Export panel", () => {
     const project = templateBundle();
-    const html = renderToStaticMarkup(<ExportPanel project={project} snapshots={[]} setMessage={noop} />);
+    const html = renderToStaticMarkup(<ExportPanel project={project} snapshots={[]} setMessage={noop} mutate={noop} />);
     expect(html).toContain("检查与导出");
     expect(html).toContain("schema 3.3.13");
+    expect(html).toContain("宽度：精确小数");
+    expect(html).toContain("宽度：整数（合计 100）");
     expect(html).toContain("更多工具 · 与现有 trime.yaml 对比");
     expect(html).toContain("Manifest");
   });

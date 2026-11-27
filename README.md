@@ -34,7 +34,7 @@
   选择布局（可继承默认布局），只保存尺寸差异；三档适配（继承 / 横屏推荐 / 精细）
 - Schema 绑定放在高级抽屉：`schema_id → keyset`，自动生成 alias keyboard
 - 导入现有 `trime.yaml`（支持多文件、`__include` / `__patch`、`base:` 包装）
-- 导入默认保留原始行宽；校准到 100% 为可选
+- 导入宽度按相对权重保存；编译时每行自动归一化到 100%
 - Import report：Mapped / Passthrough / Needs review / Dropped
 - 未建模字段进入 bundle `passthrough`，编译时合并回输出
 - 撤销 / 重做（`Cmd/Ctrl+Z`、`Shift+Cmd/Ctrl+Z`），危险操作先显示影响面
@@ -53,9 +53,10 @@
 - 26 / 18 / 14 / 9 键、数字、符号内置布局
 - 键盘预览、点击选键、长按 popup、双击 action（布局步骤在右侧预览中直接编辑）
 - 键拖拽重排、跨行移动；Key 面板提供 `Row ↑/↓`
-- 行新增/删除/排序、行高、键宽
-- `Fit all` / `Reflow` / `Distribute` / `Fit 100%`
-- Page / Key / Behavior / Style 设置
+- 行新增/删除/排序、行高、键宽（相对权重，10 = 1 个标准键）
+- `整数化` / `Reflow` / `均分` / `取整`
+- 键宽按行自动归一化；导出可选精确小数（默认）或整数（合计 100）
+- `布局` / `键` 两个 Tab；键页包含属性、样式、行为与 popup
 - Keycode、字符集、宏、Page、Toggle、Command、Preset key 选择器
 - Popup 增删、排序、批量粘贴、anchored 预览
 - 右侧常驻预览跟随设备与朝向；布局步骤中它同时是键盘编辑画布，编辑变体时自动切到横屏
@@ -261,7 +262,7 @@ liquid_keyboard
 
 - 不运行 Rime 引擎，不模拟 Android 字体、inset、真实 popup 定位和触感
 - 导入会展开受支持的 `__include` / `__patch` 子集；不支持的 DSL 会进入 import report
-- 未建模字段进入 passthrough；行分组仍按宽度推断，默认不再强制校准
+- 未建模字段进入 passthrough；行分组仍按宽度推断，编译时按相对权重归一化到 100%
 - 结构化 diff 是只读的，不支持单条 Apply / Revert
 - Liquid `TABS` 子 tab 由运行时决定
 - 拖拽是桌面 HTML5 drag，触屏使用 Row ↑/↓ 或左右移动按钮

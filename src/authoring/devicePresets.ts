@@ -79,8 +79,6 @@ export function isLandscapeRecipe(metrics: ProjectMetrics | undefined, base: Pro
 export const LAYOUT_RULES = {
   /** Rows above this count can be trimmed by "精简派生". */
   simplifyAboveRows: 4,
-  /** Allowed deviation of a row's width sum, in percent. */
-  rowWidthTolerance: 1.5,
   /** Suffix appended to a base layout id for its landscape variant. */
   landscapeSuffix: "-landscape",
 } as const;

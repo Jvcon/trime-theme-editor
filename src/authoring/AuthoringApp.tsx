@@ -567,7 +567,7 @@ export function AuthoringApp({ open = true, onClose }: Props) {
               }}
             />
           ) : null}
-          {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} /> : null}
+          {board === "export" ? <ExportPanel project={project} snapshots={snapshots} setMessage={setMessage} mutate={commit} /> : null}
           {board === "macros" ? (
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 items-center gap-stack border-b border-border px-panel py-2">
